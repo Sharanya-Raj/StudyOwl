@@ -30,7 +30,7 @@ function StudySession({ doc, user }) {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:4000/api/chat', {
+      const response = await fetch('http://localhost:8888/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -79,11 +79,10 @@ function StudySession({ doc, user }) {
       <section className="study-layout">
         <div className="doc-preview">
           {isPdf ? (
-            <object data={doc.url} type="application/pdf" className="doc-frame">
-              <p>
-                Unable to display PDF. <a href={doc.url}>Download</a> to view.
-              </p>
-            </object>
+            <>
+              {doc.url && console.log('PDF URL:', doc.url)}
+              <embed src={doc.url} type="application/pdf" className="doc-frame" />
+            </>
           ) : isImage ? (
             <img src={doc.url} alt={doc.name} className="doc-image" />
           ) : (

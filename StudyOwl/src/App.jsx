@@ -79,8 +79,13 @@ function App() {
     return { ok: true }
   }
 
-  const setDocumentId = (documentId) => {
-    setStudyDoc((prev) => (prev ? { ...prev, documentId } : null))
+  const setDocumentId = (documentId, pdfUrl) => {
+    console.log('setDocumentId called with:', { documentId, pdfUrl })
+    setStudyDoc((prev) => {
+      const updated = prev ? { ...prev, documentId, url: pdfUrl || prev.url } : null
+      console.log('Updated studyDoc:', updated)
+      return updated
+    })
   }
 
   const handleLogout = () => setUser(null)

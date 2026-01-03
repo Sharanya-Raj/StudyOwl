@@ -42,7 +42,7 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       formData.append('courseId', 'default-course')
 
       console.log('Starting upload to backend...')
-      const response = await fetch('http://localhost:4000/api/documents', {
+      const response = await fetch('http://localhost:8888/api/documents', {
         method: 'POST',
         body: formData,
       })
@@ -50,6 +50,7 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       console.log('Upload response status:', response.status)
       const data = await response.json()
       console.log('Upload response data:', data)
+      console.log('PDF URL from backend:', data.pdfUrl)
 
       clearInterval(intervalId)
 
@@ -61,14 +62,15 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       }
 
       console.log('Upload successful. DocumentId:', data.documentId)
+      console.log('Calling onSetDocumentId with pdfUrl:', data.pdfUrl)
       setUploadProgress(100)
       setUploadStatus('Uploaded. Ready for an AI-guided session.')
-      onSetDocumentId(data.documentId)
+      onSetDocumentId(data.documentId, data.pdfUrl)
       setTimeout(() => navigate('/study'), 500)
     } catch (error) {
       clearInterval(intervalId)
       console.error('Network error during upload:', error)
-      setUploadStatus('Network error. Make sure backend (http://localhost:4000) is running.')
+      setUploadStatus('Network error. Make sure backend (http://localhost:8888) is running.')
       setUploadProgress(0)
     }
   }
