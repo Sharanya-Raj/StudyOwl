@@ -1,13 +1,45 @@
 import PropTypes from 'prop-types'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
   const fileInputRef = useRef(null)
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [uploadStatus, setUploadStatus] = useState('')
-   const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0)
+  const [documentId, setDocumentId] = useState(null)
   const navigate = useNavigate()
+
+  // Poll for progress updates
+  useEffect(() => {
+    if (!documentId) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:8888/api/documents/${documentId}/status`)
+        if (!response.ok) {
+          clearInterval(pollInterval)
+          return
+        }
+
+        const data = await response.json()
+        setUploadProgress(data.progress)
+        setEstimatedTimeRemaining(data.estimatedRemainingSeconds)
+        setUploadStatus(data.message || `Processing... ${data.stage}`)
+
+        // If complete, stop polling
+        if (data.stage === 'complete') {
+          clearInterval(pollInterval)
+          setUploadStatus('Uploaded. Ready for an AI-guided session.')
+        }
+      } catch (error) {
+        console.error('Error polling progress:', error)
+      }
+    }, 500)
+
+    return () => clearInterval(pollInterval)
+  }, [documentId])
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -18,8 +50,9 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
     if (!file) return
 
     setUploadedFileName(file.name)
-    setUploadStatus('Uploading...')
+    setUploadStatus('Starting upload...')
     setUploadProgress(0)
+    setEstimatedTimeRemaining(0)
 
     // Store file object in App state
     const result = onUploadDoc(file)
@@ -27,13 +60,6 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       setUploadStatus(result?.message || 'Upload failed. Try again.')
       return
     }
-
-    // Simulate progress and upload to backend
-    let progress = 0
-    const intervalId = setInterval(() => {
-      progress = Math.min(progress + 12, 90)
-      setUploadProgress(progress)
-    }, 120)
 
     try {
       const formData = new FormData()
@@ -52,8 +78,6 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       console.log('Upload response data:', data)
       console.log('PDF URL from backend:', data.pdfUrl)
 
-      clearInterval(intervalId)
-
       if (!response.ok) {
         setUploadStatus(data.error || 'Upload failed. Try again.')
         setUploadProgress(0)
@@ -62,13 +86,14 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       }
 
       console.log('Upload successful. DocumentId:', data.documentId)
+      // Set document ID to trigger polling
+      setDocumentId(data.documentId)
+      
+      // Store document ID and navigate after a short delay
       console.log('Calling onSetDocumentId with pdfUrl:', data.pdfUrl)
-      setUploadProgress(100)
-      setUploadStatus('Uploaded. Ready for an AI-guided session.')
       onSetDocumentId(data.documentId, data.pdfUrl)
-      setTimeout(() => navigate('/study'), 500)
+      setTimeout(() => navigate('/study'), 1000)
     } catch (error) {
-      clearInterval(intervalId)
       console.error('Network error during upload:', error)
       setUploadStatus('Network error. Make sure backend (http://localhost:8888) is running.')
       setUploadProgress(0)
@@ -115,6 +140,14 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
               Selected: {uploadedFileName}
               <br />
               <span className="upload-status">{uploadStatus}</span>
+              {estimatedTimeRemaining > 0 && uploadProgress < 100 && (
+                <br />
+              )}
+              {estimatedTimeRemaining > 0 && uploadProgress < 100 && (
+                <span className="upload-time">
+                  ⏱️ Est. {estimatedTimeRemaining < 60 ? estimatedTimeRemaining + 's' : Math.ceil(estimatedTimeRemaining / 60) + 'm'} remaining
+                </span>
+              )}
             </p>
           ) : null}
           {uploadStatus ? (
@@ -123,6 +156,7 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
                 className="upload-progress-bar"
                 style={{ width: `${uploadProgress}%` }}
               />
+              <span className="upload-percent">{uploadProgress}%</span>
             </div>
           ) : null}
         </div>

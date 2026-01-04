@@ -117,7 +117,10 @@ function StudySession({ doc, user }) {
                 ) : (
                   messages.map((msg, idx) => (
                     <div key={idx} className={`chat-message ${msg.role}`}>
-                      <div className="chat-bubble">{msg.content}</div>
+                      <div 
+                        className="chat-bubble" 
+                        dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br />') }}
+                      />
                     </div>
                   ))
                 )}

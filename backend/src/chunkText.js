@@ -21,8 +21,8 @@ export function* chunkTextGenerator(text, size = 1000, overlap = 150) {
     // Move to the next chunk position
     start += step
     
-    // If we're close to the end, break to avoid tiny final chunks
-    if (len - start < size * 0.1) break
+    // Stop when we've processed all text
+    if (start >= len) break
   }
 }
 
