@@ -293,11 +293,3 @@ Check document processing status.
 
 MIT
 
-## 🤝 Contributing
-
-Contributions welcome! Areas for improvement:
-- Additional graph templates
-- Improved classification algorithm (weighted keywords)
-- Enhanced visual formatting
-- Mobile app
-- Advanced study features
