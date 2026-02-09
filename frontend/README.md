@@ -23,6 +23,14 @@ npm run dev
 
 Frontend runs on `http://localhost:5173`
 
+### Configure Supabase Auth
+Create a `.env` file in the frontend folder with:
+```
+VITE_API_BASE_URL=http://localhost:8888
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
 ### Build for Production
 ```bash
 npm run build

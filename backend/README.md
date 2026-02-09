@@ -25,7 +25,13 @@ Create `.env` file with:
 ```
 PORT=8888
 GROQ_API_KEY=gsk_***
-GROQ_MODEL=llama-3.1-70b-versatile
+GROQ_MODEL=llama-3.1-8b-instant
+GROQ_GRAPH_MODEL=llama-3.1-70b-versatile
+GRAPH_ENRICHMENT_MODE=missing
+MAX_CHUNKS_FOR_CHAT=500
+AUTH_REQUIRED=true
+SUPABASE_JWT_SECRET=your-supabase-jwt-secret
+SUPABASE_JWT_ISSUER=https://your-project-ref.supabase.co/auth/v1
 AZURE_FORM_RECOGNIZER_ENDPOINT=https://eastus2.api.cognitive.microsoft.com/
 AZURE_FORM_RECOGNIZER_KEY=***
 AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=***

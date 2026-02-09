@@ -1,15 +1,15 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import InputField from '../components/InputField'
+import { supabase } from '../auth/supabaseClient'
 
-function Login({ onLogin }) {
+function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     if (!email.trim() || !password.trim()) {
       setError('Enter your email and password to continue.')
@@ -18,13 +18,17 @@ function Login({ onLogin }) {
 
     setError('')
     setLoading(true)
-    const result = onLogin({ email: email.trim(), password })
-    setLoading(false)
 
-    if (!result?.ok) {
-      setError(result?.message || 'Unable to sign in. Please try again.')
-      return
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+
+    if (signInError) {
+      setError(signInError.message || 'Unable to sign in. Please try again.')
     }
+
+    setLoading(false)
   }
 
   return (
@@ -56,10 +60,6 @@ function Login({ onLogin }) {
         <button className="primary-btn" type="submit" disabled={loading}>
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
-
-        <div className="form-hint">
-          <Link to="/signup">Need an account? Join StudyOwl</Link>
-        </div>
       </form>
     </AuthLayout>
   )

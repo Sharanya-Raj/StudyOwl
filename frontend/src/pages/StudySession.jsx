@@ -1,13 +1,13 @@
 import PropTypes from 'prop-types'
 import { useRef, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-
-function StudySession({ doc, user }) {
+function StudySession({ doc, user, session }) {
   const [mode, setMode] = useState('chat')
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
 
   const isPdf = doc.type === 'application/pdf'
   const isImage = doc.type.startsWith('image/')
@@ -30,9 +30,18 @@ function StudySession({ doc, user }) {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:8888/api/chat', {
+      const token = session?.access_token
+      if (!token) {
+        setLoading(false)
+        return
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           documentId: doc.documentId,
           message: userMessage.content,
@@ -80,7 +89,6 @@ function StudySession({ doc, user }) {
         <div className="doc-preview">
           {isPdf ? (
             <>
-              {doc.url && console.log('PDF URL:', doc.url)}
               <embed src={doc.url} type="application/pdf" className="doc-frame" />
             </>
           ) : isImage ? (
@@ -175,6 +183,9 @@ StudySession.propTypes = {
     type: PropTypes.string.isRequired,
     documentId: PropTypes.string,
   }).isRequired,
+  session: PropTypes.shape({
+    access_token: PropTypes.string,
+  }),
   user: PropTypes.shape({
     email: PropTypes.string,
   }),

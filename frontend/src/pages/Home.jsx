@@ -1,8 +1,7 @@
 import PropTypes from 'prop-types'
 import { useRef, useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-
-function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
+import { useNavigate } from 'react-router-dom'
+function Home({ user, session, onLogout, onUploadDoc, onSetDocumentId }) {
   const fileInputRef = useRef(null)
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [uploadStatus, setUploadStatus] = useState('')
@@ -10,6 +9,7 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0)
   const [documentId, setDocumentId] = useState(null)
   const navigate = useNavigate()
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
 
   // Poll for progress updates
   useEffect(() => {
@@ -17,7 +17,14 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:8888/api/documents/${documentId}/status`)
+        const token = session?.access_token
+        if (!token) return
+
+        const response = await fetch(`${apiBaseUrl}/api/documents/${documentId}/status`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
         if (!response.ok) {
           clearInterval(pollInterval)
           return
@@ -36,7 +43,7 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       } catch (error) {
         console.error('Error polling progress:', error)
       }
-    }, 500)
+    }, 1500)
 
     return () => clearInterval(pollInterval)
   }, [documentId])
@@ -48,6 +55,12 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
+
+    if (file.type !== 'application/pdf') {
+      setUploadStatus('Only PDF files are supported right now.')
+      setUploadProgress(0)
+      return
+    }
 
     setUploadedFileName(file.name)
     setUploadStatus('Starting upload...')
@@ -68,8 +81,18 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       formData.append('courseId', 'default-course')
 
       console.log('Starting upload to backend...')
-      const response = await fetch('http://localhost:8888/api/documents', {
+      const token = session?.access_token
+      if (!token) {
+        setUploadStatus('Sign-in required to upload this document.')
+        setUploadProgress(0)
+        return
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/documents`, {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
         body: formData,
       })
 
@@ -105,16 +128,18 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
       <header className="home-header">
         <div>
           <p className="eyebrow">Dashboard</p>
-          <h1 className="home-title">Welcome to StudyOwl{user?.email ? `, ${user.email}` : ''}</h1>
+          <h1 className="home-title">
+            Welcome to StudyOwl{user?.name || user?.email ? `, ${user?.name || user?.email}` : ''}
+          </h1>
           <p className="home-subtitle">
             This is a lightweight placeholder home. Swap in your real dashboard
             content when ready.
           </p>
         </div>
         <div className="home-actions">
-          <Link className="ghost-btn" to="/login" onClick={onLogout}>
+          <button className="ghost-btn" type="button" onClick={onLogout}>
             Sign out
-          </Link>
+          </button>
           <button className="primary-btn" type="button">
             Add study goal
           </button>
@@ -128,7 +153,7 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg"
+            accept=".pdf"
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
@@ -176,6 +201,10 @@ function Home({ user, onLogout, onUploadDoc, onSetDocumentId }) {
 Home.propTypes = {
   user: PropTypes.shape({
     email: PropTypes.string,
+    name: PropTypes.string,
+  }),
+  session: PropTypes.shape({
+    access_token: PropTypes.string,
   }),
   onLogout: PropTypes.func.isRequired,
   onUploadDoc: PropTypes.func.isRequired,

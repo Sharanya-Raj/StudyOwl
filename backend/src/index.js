@@ -4,6 +4,8 @@ import cors from 'cors'
 import multer from 'multer'
 import { v4 as uuidv4 } from 'uuid'
 import Groq from 'groq-sdk'
+import jwt from 'jsonwebtoken'
+import jwksClient from 'jwks-rsa'
 import {
   BlobServiceClient,
   StorageSharedKeyCredential,
@@ -18,7 +20,8 @@ import { PDFDocument } from 'pdf-lib'
 const app = express()
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
-  credentials: true
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json())
 
@@ -37,7 +40,15 @@ const {
   COSMOS_DB_NAME,
   COSMOS_CONTAINER_NAME,
   GROQ_API_KEY,
-  GROQ_MODEL = 'llama-3.1-70b-versatile',
+  GROQ_MODEL = 'llama-3.1-8b-instant',
+  GROQ_GRAPH_MODEL = 'llama-3.1-70b-versatile',
+  GRAPH_ENRICHMENT_MODE = 'missing',
+  MAX_CHUNKS_FOR_CHAT = '500',
+  AUTH_REQUIRED = 'false',
+  SUPABASE_JWT_SECRET,
+  SUPABASE_JWT_ISSUER,
+  SUPABASE_JWKS_URL,
+  SUPABASE_JWKS_API_KEY,
 } = process.env
 
 if (!AZURE_FORM_RECOGNIZER_ENDPOINT || !AZURE_FORM_RECOGNIZER_KEY) {
@@ -51,6 +62,36 @@ if (!COSMOS_ENDPOINT || !COSMOS_KEY || !COSMOS_DB_NAME || !COSMOS_CONTAINER_NAME
 }
 if (!GROQ_API_KEY) {
   throw new Error('Missing GROQ_API_KEY env var')
+}
+
+const authRequired = !['false', '0', 'no', 'off'].includes(String(AUTH_REQUIRED).toLowerCase())
+const maxChunksForChat = Math.max(50, Number.parseInt(MAX_CHUNKS_FOR_CHAT, 10) || 500)
+
+let supabaseJwks = null
+const supabaseJwksUrl = SUPABASE_JWKS_URL
+  || (SUPABASE_JWT_ISSUER ? `${SUPABASE_JWT_ISSUER.replace(/\/$/, '')}/.well-known/jwks.json` : null)
+
+if (authRequired) {
+  if (!SUPABASE_JWT_SECRET) {
+    throw new Error('Missing SUPABASE_JWT_SECRET env var')
+  }
+
+  if (supabaseJwksUrl) {
+    const jwksHeaders = SUPABASE_JWKS_API_KEY
+      ? {
+          apikey: SUPABASE_JWKS_API_KEY,
+          Authorization: `Bearer ${SUPABASE_JWKS_API_KEY}`,
+        }
+      : undefined
+
+    supabaseJwks = jwksClient({
+      jwksUri: supabaseJwksUrl,
+      cache: true,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+      requestHeaders: jwksHeaders,
+    })
+  }
 }
 
 // Initialize clients and containers
@@ -86,6 +127,9 @@ async function initializeServices() {
     console.log('✓ Cosmos DB initialized')
 
     console.log(`✓ Groq configured: ${GROQ_MODEL}`)
+    console.log(`✓ Groq graph model: ${GROQ_GRAPH_MODEL}`)
+    console.log(`✓ Graph enrichment mode: ${GRAPH_ENRICHMENT_MODE}`)
+    console.log(`✓ Auth required: ${authRequired}`)
   } catch (error) {
     console.error('Failed to initialize services:', error.message)
     throw error
@@ -105,7 +149,66 @@ async function initializeServices() {
   }
 })()
 
-app.post('/api/documents', upload.single('file'), async (req, res) => {
+function requireAuth(req, res, next) {
+  if (!authRequired) return next()
+
+  const authHeader = req.headers.authorization || ''
+  const match = authHeader.match(/^Bearer\s+(.+)$/i)
+  if (!match) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' })
+  }
+
+  const token = match[1]
+  const decoded = jwt.decode(token, { complete: true })
+  const alg = decoded?.header?.alg
+  const kid = decoded?.header?.kid
+
+  const options = {
+    algorithms: alg ? [alg] : ['HS256'],
+  }
+  if (SUPABASE_JWT_ISSUER) {
+    options.issuer = SUPABASE_JWT_ISSUER
+  }
+
+  const handleFailure = (error) => {
+    console.error('Auth token verification failed:', {
+      name: error.name,
+      message: error.message,
+      issuer: SUPABASE_JWT_ISSUER || undefined,
+      alg: alg || undefined,
+      kid: kid || undefined,
+    })
+    return res.status(401).json({ error: 'Invalid or expired token' })
+  }
+
+  if (alg && (alg.startsWith('RS') || alg.startsWith('ES'))) {
+    if (!supabaseJwks) {
+      return res.status(401).json({ error: 'JWKS URL not configured for asymmetric tokens' })
+    }
+
+    const getKey = (header, callback) => {
+      supabaseJwks.getSigningKey(header.kid, (error, key) => {
+        if (error) return callback(error)
+        const signingKey = key.getPublicKey()
+        return callback(null, signingKey)
+      })
+    }
+
+    return jwt.verify(token, getKey, options, (error, verified) => {
+      if (error) return handleFailure(error)
+      req.user = verified
+      return next()
+    })
+  }
+
+  return jwt.verify(token, SUPABASE_JWT_SECRET, options, (error, verified) => {
+    if (error) return handleFailure(error)
+    req.user = verified
+    return next()
+  })
+}
+
+app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) => {
   console.log('📤 Upload request received')
   try {
     const { studentId, courseId } = req.body
@@ -429,24 +532,12 @@ app.post('/api/documents', upload.single('file'), async (req, res) => {
   }
 })
 
-app.post('/api/chat', express.json(), async (req, res) => {
+app.post('/api/chat', requireAuth, express.json(), async (req, res) => {
   try {
     const { documentId, message, pageNumber, conversationHistory = [] } = req.body
 
     if (!documentId || !message) {
       return res.status(400).json({ error: 'documentId and message are required' })
-    }
-
-    // Retrieve chunks for this document from Cosmos
-    const query = {
-    query: 'SELECT * FROM c WHERE c.documentId = @documentId ORDER BY c.pageNumber',
-    parameters: [{ name: '@documentId', value: documentId }],
-    };
-
-    const { resources: allChunks } = await cosmosContainer.items.query(query).fetchAll();
-
-    if (!allChunks || allChunks.length === 0) {
-    return res.status(404).json({ error: 'No document chunks found for this documentId' });
     }
 
     console.log('📤 Chat request received');
@@ -465,12 +556,40 @@ app.post('/api/chat', express.json(), async (req, res) => {
       }
     }
 
+    // Retrieve chunks for this document from Cosmos (optimize by page hint or hard cap)
+    let allChunks = []
+    if (pageHint && Number.isFinite(pageHint)) {
+      const windowPages = [pageHint - 1, pageHint, pageHint + 1].filter(p => p >= 1)
+      const pageFilters = windowPages.map((_, idx) => `c.pageNumber = @p${idx}`).join(' OR ')
+      const query = {
+        query: `SELECT c.pageNumber, c.content FROM c WHERE c.documentId = @documentId AND (${pageFilters}) ORDER BY c.pageNumber`,
+        parameters: [
+          { name: '@documentId', value: documentId },
+          ...windowPages.map((p, idx) => ({ name: `@p${idx}`, value: p })),
+        ],
+      }
+      const { resources } = await cosmosContainer.items.query(query).fetchAll()
+      allChunks = resources || []
+      console.log(`   📄 Page hint active. Window: ${windowPages.join(', ')} -> ${allChunks.length} chunks`)
+    } else {
+      const query = {
+        query: `SELECT TOP ${maxChunksForChat} c.pageNumber, c.content FROM c WHERE c.documentId = @documentId ORDER BY c.pageNumber`,
+        parameters: [{ name: '@documentId', value: documentId }],
+      }
+      const { resources } = await cosmosContainer.items.query(query).fetchAll()
+      allChunks = resources || []
+      console.log(`   📚 Chat query capped at ${maxChunksForChat} chunks`)
+    }
+
+    if (!allChunks || allChunks.length === 0) {
+      return res.status(404).json({ error: 'No document chunks found for this documentId' })
+    }
+
     // Narrow chunks to hinted page (with +/-1 window) if provided
     let candidateChunks = allChunks
     if (pageHint && Number.isFinite(pageHint)) {
       const windowPages = [pageHint - 1, pageHint, pageHint + 1].filter(p => p >= 1)
       candidateChunks = allChunks.filter(c => windowPages.includes(c.pageNumber))
-      console.log(`   📄 Page hint active. Window: ${windowPages.join(', ')} -> ${candidateChunks.length} chunks`)
       if (candidateChunks.length === 0) {
         console.log('   ⚠️ No chunks in hinted window; falling back to all pages')
         candidateChunks = allChunks
@@ -557,7 +676,7 @@ app.get('/health', (req, res) => {
   res.json({ ok: true })
 })
 
-app.get('/api/documents/:documentId/status', (req, res) => {
+app.get('/api/documents/:documentId/status', requireAuth, (req, res) => {
   const { documentId } = req.params
   const progress = uploadProgress.get(documentId)
   
@@ -657,29 +776,40 @@ function buildContextSmart(chunks, message, maxChars = 6000, pageHint = null) {
     }
   }
 
+  // Precompute document frequency for keywords
+  const keywordRegexes = keywords.map((kw) => new RegExp(`\\b${kw}\\b`, 'gi'))
+  const docFreq = new Map()
+  for (const kw of keywords) docFreq.set(kw, 0)
+  for (const chunk of chunks) {
+    const text = (chunk.content || '').toLowerCase()
+    keywordRegexes.forEach((regex, idx) => {
+      if (regex.test(text)) {
+        const kw = keywords[idx]
+        docFreq.set(kw, (docFreq.get(kw) || 0) + 1)
+      }
+      regex.lastIndex = 0
+    })
+  }
+
   // Calculate TF-IDF scores for semantic relevance
   const scoredChunks = chunks.map((chunk) => {
     const text = (chunk.content || '').toLowerCase()
     let tfidfScore = 0
-    
+
     // Massive boost for graph chunks when graphs are mentioned
     if (isGraphQuery && /\[graph (structure|interpretation)\]|\[figure \d+\]/i.test(text)) {
-      tfidfScore += 10.0 // Very high boost to ensure graph chunks are selected
+      tfidfScore += 10.0
     }
 
-    for (const kw of keywords) {
-      const regex = new RegExp(`\\b${kw}\\b`, 'g')
+    const wordCount = text.split(/\s+/).length || 1
+    keywordRegexes.forEach((regex, idx) => {
       const matches = (text.match(regex) || []).length
-      const wordCount = text.split(/\s+/).length || 1
+      if (matches === 0) return
+      const kw = keywords[idx]
       const tf = matches / wordCount
-
-      const chunksWithTerm = chunks.filter((c) =>
-        new RegExp(`\\b${kw}\\b`, 'i').test(c.content || ''),
-      ).length
-      const idf = Math.log((chunks.length + 1) / (chunksWithTerm + 1))
-
+      const idf = Math.log((chunks.length + 1) / ((docFreq.get(kw) || 0) + 1))
       tfidfScore += tf * idf
-    }
+    })
 
     return { chunk, score: tfidfScore }
   })
@@ -735,10 +865,10 @@ function buildContextSmart(chunks, message, maxChars = 6000, pageHint = null) {
   }
 
   console.log(`   [Semantic Search] No matches, falling back to page summary`)
-  return getPagesRepresentation(chunks, scoredChunks)
+  return getPagesRepresentation(chunks, scoredChunks, maxChars)
 }
 
-function getPagesRepresentation(chunks, scoredChunks) {
+function getPagesRepresentation(chunks, scoredChunks, maxChars = 6000) {
   // Fallback: one representative chunk per page for broad coverage
   const byPage = new Map()
   for (const chunk of chunks) {
@@ -753,13 +883,25 @@ function getPagesRepresentation(chunks, scoredChunks) {
     const list = byPage.get(p) || []
     const scored = list.map((c) => ({
       c,
-      s: scoredChunks.find((x) => x.c === c)?.s || 0,
+      s: scoredChunks.find((x) => x.chunk === c)?.score || 0,
     }))
     scored.sort((a, b) => b.s - a.s || (b.c.content || '').length - (a.c.content || '').length)
     if (scored[0]) selected.push(scored[0].c)
   }
 
-  return selected
+  const parts = []
+  let remaining = maxChars
+  for (const c of selected) {
+    const text = c.content || ''
+    if (!text) continue
+    const block = `[Page ${c.pageNumber ?? '?'}] ${text}`
+    const needed = block.length + 2
+    if (needed > remaining) break
+    parts.push(block)
+    remaining -= needed
+  }
+
+  return parts.join("\n\n")
 }
 
 function formatResponse(text) {
@@ -1296,7 +1438,7 @@ CRITICAL: If you cannot infer something with confidence, state "Cannot determine
   try {
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: GROQ_MODEL,
+      model: GROQ_GRAPH_MODEL,
       temperature: 0.1, // Lower temp for more factual responses
       max_tokens: 500,
     })
@@ -1322,6 +1464,12 @@ ${scaffolding}
 async function enrichGraphDescriptions(pageTexts) {
   console.log('   🔍 Analyzing graphs for context enrichment...')
   let enrichmentCount = 0
+
+  const mode = String(GRAPH_ENRICHMENT_MODE).toLowerCase()
+  if (mode === 'none') {
+    console.log('   ℹ️ Graph enrichment disabled by configuration')
+    return pageTexts
+  }
   
   for (const page of pageTexts) {
     if (!page.figureMetadata || page.figureMetadata.length === 0) continue
@@ -1331,6 +1479,10 @@ async function enrichGraphDescriptions(pageTexts) {
     
     for (let figIndex = 0; figIndex < page.figureMetadata.length; figIndex++) {
       const figMeta = page.figureMetadata[figIndex]
+
+      if (mode === 'missing' && !figMeta.needsContextInference) {
+        continue
+      }
       
       try {
         // Use scaffolded prompt for detailed graph structure

@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
+
+:root {
+  font-family: 'Sora', 'Segoe UI', sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  background-color: #0c111b;
+  color: #e6edf3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --bg: #0c111b;
+  --bg-soft: #0f172a;
+  --panel: #111827;
+  --panel-strong: #0e1524;
+  --stroke: #1f2a3d;
+  --text: #e6edf3;
+  --text-muted: #9aa6b2;
+  --accent: #3bc9c9;
+  --accent-strong: #2dd4bf;
+  --accent-warm: #f59e0b;
+  --accent-soft: #9dd9d9;
+  --success: #22c55e;
+  --danger: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(59, 200, 201, 0.12), transparent 40%),
+    radial-gradient(circle at 90% 10%, rgba(245, 158, 11, 0.12), transparent 35%),
+    radial-gradient(circle at 70% 80%, rgba(45, 212, 191, 0.08), transparent 50%),
+    #0c111b;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #7dd3fc;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

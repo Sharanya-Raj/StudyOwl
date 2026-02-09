@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import InputField from '../components/InputField'
+import { supabase } from '../auth/supabaseClient'
 
-function Signup({ onSignup }) {
+function Signup() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -11,7 +11,7 @@ function Signup({ onSignup }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     if (!name.trim() || !email.trim() || !password.trim()) {
       setError('Please fill in all fields to create your account.')
@@ -25,17 +25,22 @@ function Signup({ onSignup }) {
 
     setError('')
     setLoading(true)
-    const result = onSignup({
-      email: email.trim(),
-      name: name.trim(),
-      password,
-    })
-    setLoading(false)
 
-    if (!result?.ok) {
-      setError(result?.message || 'Could not create your account. Try again.')
-      return
+    const { error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: name.trim(),
+        },
+      },
+    })
+
+    if (signUpError) {
+      setError(signUpError.message || 'Could not create your account. Try again.')
     }
+
+    setLoading(false)
   }
 
   return (
@@ -82,10 +87,6 @@ function Signup({ onSignup }) {
         <button className="primary-btn" type="submit" disabled={loading}>
           {loading ? 'Creating account...' : 'Create account'}
         </button>
-
-        <div className="form-hint">
-          <Link to="/login">Already registered? Go to sign in</Link>
-        </div>
       </form>
     </AuthLayout>
   )
