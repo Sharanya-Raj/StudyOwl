@@ -80,6 +80,7 @@ const supabaseJwksUrl = SUPABASE_JWKS_URL
   || (SUPABASE_JWT_ISSUER ? `${SUPABASE_JWT_ISSUER.replace(/\/$/, '')}/.well-known/jwks.json` : null)
 
 let supabaseAdmin = null
+const supabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
 
 if (authRequired) {
   if (!SUPABASE_JWT_SECRET) {
@@ -104,10 +105,11 @@ if (authRequired) {
   }
 }
 
-if (embeddingsEnabled) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for embeddings')
-  }
+if (embeddingsEnabled && !supabaseEnabled) {
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for embeddings')
+}
+
+if (supabaseEnabled) {
   supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   })
@@ -297,6 +299,85 @@ async function storeSingleEmbedding({ table, payload, text }) {
   }
 }
 
+function buildUserEmbeddingText(profile, courseId) {
+  if (!profile) return ''
+  const courses = Array.isArray(profile.courses) ? profile.courses : []
+  const preferences = profile.study_preferences || {}
+  const parts = [
+    profile.name ? `Name: ${profile.name}` : null,
+    courses.length ? `Courses: ${courses.join(', ')}` : null,
+    courseId ? `Recent course: ${courseId}` : null,
+    Object.keys(preferences).length ? `Preferences: ${JSON.stringify(preferences)}` : null,
+  ].filter(Boolean)
+
+  return parts.join('\n')
+}
+
+function normalizeEmbeddingValue(raw) {
+  if (!raw) return null
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim().replace(/^\[/, '').replace(/\]$/, '')
+    if (!trimmed) return null
+    return trimmed
+      .split(',')
+      .map((value) => Number.parseFloat(value.trim()))
+      .filter((value) => Number.isFinite(value))
+  }
+  return null
+}
+
+function formatEmbeddingForSql(embedding) {
+  if (!embedding || embedding.length === 0) return null
+  return `[${embedding.join(',')}]`
+}
+
+async function refreshUserEmbeddingFromProfile({ userId, courseId }) {
+  if (!embeddingsEnabled || !supabaseAdmin || !userId) return
+
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, name, avatar_url, courses, study_preferences, is_available')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('Failed to fetch profile for embedding:', error.message)
+    return
+  }
+
+  const embedText = buildUserEmbeddingText(profile, courseId)
+  if (!embedText) return
+
+  await storeSingleEmbedding({
+    table: 'user_embeddings',
+    payload: {
+      id: uuidv4(),
+      user_id: userId,
+      source_field: 'profile',
+    },
+    text: embedText,
+  })
+}
+
+async function fetchLatestUserEmbedding(userId) {
+  if (!supabaseAdmin || !userId) return null
+  const { data, error } = await supabaseAdmin
+    .from('user_embeddings')
+    .select('embedding, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('Failed to fetch latest user embedding:', error.message)
+    return null
+  }
+
+  return normalizeEmbeddingValue(data?.embedding)
+}
+
 app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) => {
   console.log('📤 Upload request received')
   try {
@@ -436,6 +517,13 @@ app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) 
     
     // Enrich graphs with AI-inferred context
     pageTexts = await enrichGraphDescriptions(pageTexts)
+
+    // Update user embedding after chunking prep
+    try {
+      await refreshUserEmbeddingFromProfile({ userId, courseId })
+    } catch (error) {
+      console.warn('User embedding refresh failed:', error.message)
+    }
     
     // Update progress: chunking
     uploadProgress.set(documentId, {
@@ -874,6 +962,76 @@ app.post('/api/embeddings/preference', requireAuth, express.json(), async (req, 
   } catch (error) {
     console.error('Preference embedding error:', error.message)
     return res.status(500).json({ error: 'Embedding failed', detail: error.message })
+  }
+})
+
+app.get('/sessions/available', requireAuth, async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Supabase is not configured on the backend.' })
+    }
+
+    const course = req.query.course || null
+    const topic = req.query.topic || null
+    const style = req.query.style || null
+    const userId = req.query.user_id || req.query.userId || null
+    const limit = Math.min(Number.parseInt(req.query.limit, 10) || 25, 100)
+
+    if (userId) {
+      const queryEmbedding = await fetchLatestUserEmbedding(userId)
+      if (queryEmbedding && queryEmbedding.length) {
+        const { data, error } = await supabaseAdmin.rpc('match_available_users', {
+          query_embedding: formatEmbeddingForSql(queryEmbedding),
+          match_limit: limit,
+          filter_course: course,
+          filter_topic: topic,
+          filter_style: style,
+          exclude_user_id: userId,
+        })
+
+        if (error) {
+          return res.status(500).json({ error: error.message })
+        }
+
+        return res.json({ matches: data || [] })
+      }
+    }
+
+    let query = supabaseAdmin
+      .from('profiles')
+      .select('id, name, avatar_url, courses, study_preferences, is_available')
+      .eq('is_available', true)
+
+    if (course) {
+      query = query.contains('courses', [course])
+    }
+
+    if (topic || style) {
+      const preferencesFilter = {}
+      if (topic) preferencesFilter.topic = topic
+      if (style) preferencesFilter.style = style
+      query = query.contains('study_preferences', preferencesFilter)
+    }
+
+    const { data, error } = await query.limit(limit)
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    const matches = (data || []).map((row) => ({
+      user_id: row.id,
+      name: row.name,
+      avatar_url: row.avatar_url,
+      courses: row.courses,
+      study_preferences: row.study_preferences,
+      is_available: row.is_available,
+      similarity_score: null,
+    }))
+
+    return res.json({ matches })
+  } catch (error) {
+    console.error('Available sessions error:', error.message)
+    return res.status(500).json({ error: 'Failed to fetch available sessions.' })
   }
 })
 

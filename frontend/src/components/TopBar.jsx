@@ -14,7 +14,7 @@ function TopBar({ user, onLogout, availability, onToggleAvailability, notificati
         <nav className="topbar-nav">
           <Link to="/dashboard">Dashboard</Link>
           <Link to="/workspace">AI Workspace</Link>
-          <Link to="/live">Live Sessions</Link>
+          <Link to="/study">Study Sessions</Link>
           <Link to="/profile">Profile</Link>
         </nav>
       </div>

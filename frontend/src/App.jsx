@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import Home from './pages/Home'
 import Landing from './pages/Landing'
-import LiveSession from './pages/LiveSession'
 import Login from './pages/Login'
 import Profile from './pages/Profile'
 import Signup from './pages/Signup'
@@ -159,25 +158,6 @@ function App() {
                 onLogout={handleLogout}
                 onUploadDoc={handleDocUpload}
                 onSetDocumentId={setDocumentId}
-                documentId={studyDoc?.documentId}
-              />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route
-          path="/live"
-          element={
-            !isReady ? (
-              <div className="home-page">
-                <div className="card">Loading session...</div>
-              </div>
-            ) : isAuthed ? (
-              <LiveSession
-                user={user}
-                session={session}
-                onLogout={handleLogout}
                 documentId={studyDoc?.documentId}
               />
             ) : (

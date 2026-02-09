@@ -321,7 +321,7 @@
   border: 1px solid var(--stroke);
   border-radius: 16px;
   padding: 18px;
-  box-shadow: 0 16px 30px rgba(92, 71, 54, 0.12);
+  box-shadow: 0 16px 30px rgba(107, 79, 57, 0.12);
 }
 
 .card h3 {
@@ -604,6 +604,38 @@
   letter-spacing: 0.12em;
 }
 
+.session-filters {
+  display: grid;
+  gap: 10px;
+}
+
+.filter-group {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b5b50;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #3a2d23;
+}
+
+.session-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .session-list {
   display: flex;
   flex-direction: column;
@@ -722,6 +754,60 @@
 
 .session-chat .chat-container {
   height: 64vh;
+}
+
+.session-locked {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 240px;
+  color: var(--text-muted);
+}
+
+.session-locked h3 {
+  margin-bottom: 8px;
+  color: #3a2d23;
+}
+
+.course-form {
+  display: grid;
+  gap: 10px;
+}
+
+.course-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.course-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: #fffaf3;
+  color: #3a2d23;
+  font-weight: 600;
+}
+
+.course-chip button {
+  border: 1px solid rgba(192, 138, 62, 0.4);
+  background: transparent;
+  color: #6b5b50;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.course-chip button:hover {
+  border-color: var(--accent-rose);
+  color: #3a2d23;
 }
 
 @media (max-width: 900px) {
