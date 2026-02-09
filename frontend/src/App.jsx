@@ -2,9 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import Home from './pages/Home'
+import Landing from './pages/Landing'
+import LiveSession from './pages/LiveSession'
 import Login from './pages/Login'
+import Profile from './pages/Profile'
 import Signup from './pages/Signup'
 import StudySession from './pages/StudySession'
+import Workspace from './pages/Workspace'
 import { supabase } from './auth/supabaseClient'
 
 function App() {
@@ -85,7 +89,7 @@ function App() {
                 <div className="card">Loading session...</div>
               </div>
             ) : (
-              <Navigate to={isAuthed ? '/home' : '/login'} replace />
+              <Landing />
             )
           }
         />
@@ -119,6 +123,10 @@ function App() {
         />
         <Route
           path="/home"
+          element={<Navigate to="/dashboard" replace />}
+        />
+        <Route
+          path="/dashboard"
           element={
             !isReady ? (
               <div className="home-page">
@@ -138,6 +146,60 @@ function App() {
           }
         />
         <Route
+          path="/workspace"
+          element={
+            !isReady ? (
+              <div className="home-page">
+                <div className="card">Loading session...</div>
+              </div>
+            ) : isAuthed ? (
+              <Workspace
+                user={user}
+                session={session}
+                onLogout={handleLogout}
+                onUploadDoc={handleDocUpload}
+                onSetDocumentId={setDocumentId}
+                documentId={studyDoc?.documentId}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/live"
+          element={
+            !isReady ? (
+              <div className="home-page">
+                <div className="card">Loading session...</div>
+              </div>
+            ) : isAuthed ? (
+              <LiveSession
+                user={user}
+                session={session}
+                onLogout={handleLogout}
+                documentId={studyDoc?.documentId}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            !isReady ? (
+              <div className="home-page">
+                <div className="card">Loading session...</div>
+              </div>
+            ) : isAuthed ? (
+              <Profile user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
           path="/study"
           element={
             !isReady ? (
@@ -145,11 +207,7 @@ function App() {
                 <div className="card">Loading session...</div>
               </div>
             ) : isAuthed ? (
-              studyDoc ? (
-                <StudySession doc={studyDoc} user={user} session={session} />
-              ) : (
-                <Navigate to="/home" replace />
-              )
+              <StudySession doc={studyDoc} user={user} session={session} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )

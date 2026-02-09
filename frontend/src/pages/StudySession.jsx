@@ -1,176 +1,118 @@
 import PropTypes from 'prop-types'
-import { useRef, useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-function StudySession({ doc, user, session }) {
-  const [mode, setMode] = useState('chat')
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const messagesEndRef = useRef(null)
+import TopBar from '../components/TopBar'
+import ChatPanel from '../components/ChatPanel'
+
+function StudySession({ doc, user, session, onLogout }) {
+  const [availability, setAvailability] = useState('available')
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
+  const sessionTitle = doc?.name ? `${doc.name} Study Session` : "Susan's Study Session"
+  const chats = [
+    { id: 'susan', name: "Susan's Study Session", preview: 'Next: review chapter 4', active: true },
+    { id: 'jake', name: 'Jake Trivedi', preview: 'Quiz at 6 PM', active: false },
+    { id: 'michelle', name: 'Michelle Ross', preview: 'Group notes uploaded', active: false },
+    { id: 'naina', name: "Naina Raj's Study Session", preview: 'Looking for 2 more', active: false },
+    { id: 'mia', name: 'Mia Shah', preview: 'Scheduling', active: false },
+  ]
 
-  const isPdf = doc.type === 'application/pdf'
-  const isImage = doc.type.startsWith('image/')
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  const handleSendMessage = async () => {
-    if (!input.trim() || loading) return
-
-    if (!doc.documentId) {
-      alert('Document is still processing. Please wait.')
-      return
-    }
-
-    const userMessage = { role: 'user', content: input.trim() }
-    setMessages((prev) => [...prev, userMessage])
-    setInput('')
-    setLoading(true)
-
-    try {
-      const token = session?.access_token
-      if (!token) {
-        setLoading(false)
-        return
-      }
-
-      const response = await fetch(`${apiBaseUrl}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          documentId: doc.documentId,
-          message: userMessage.content,
-          conversationHistory: messages,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Chat request failed')
-      }
-
-      const data = await response.json()
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }])
-    } catch (error) {
-      console.error('Chat error:', error)
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' },
-      ])
-    } finally {
-      setLoading(false)
-    }
-  }
+  const getInitials = (name) =>
+    name
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('')
 
   return (
-    <main className="home-page">
-      <header className="home-header">
+    <main className="page-shell">
+      <TopBar
+        user={user}
+        onLogout={onLogout}
+        availability={availability}
+        onToggleAvailability={() =>
+          setAvailability((prev) => (prev === 'available' ? 'away' : 'available'))
+        }
+        notificationsCount={2}
+      />
+      <section className="page-header">
         <div>
           <p className="eyebrow">Study Session</p>
-          <h1 className="home-title">{doc.name}</h1>
-          <p className="home-subtitle">
-            {doc.documentId
-              ? 'Preview your document and choose how you want to study.'
-              : 'Processing document... This may take a moment.'}
+          <h1 className="page-title">Live study room</h1>
+          <p className="page-subtitle">
+            Join a session, catch up on notes, and keep your group on the same page.
           </p>
         </div>
-        <div className="home-actions">
-          <Link className="ghost-btn" to="/home">
+        <div className="header-actions">
+          <Link className="ghost-btn" to="/dashboard">
             Back to dashboard
           </Link>
         </div>
-      </header>
+      </section>
 
-      <section className="study-layout">
-        <div className="doc-preview">
-          {isPdf ? (
-            <>
-              <embed src={doc.url} type="application/pdf" className="doc-frame" />
-            </>
-          ) : isImage ? (
-            <img src={doc.url} alt={doc.name} className="doc-image" />
-          ) : (
-            <iframe title="Document preview" src={doc.url} className="doc-frame" />
-          )}
-        </div>
-
-        <div className="study-panel">
-          <div className="mode-buttons">
-            <button
-              className={mode === 'chat' ? 'primary-btn' : 'ghost-btn'}
-              type="button"
-              onClick={() => setMode('chat')}
-            >
-              Ask the chatbot
-            </button>
-            <button
-              className={mode === 'techniques' ? 'primary-btn' : 'ghost-btn'}
-              type="button"
-              onClick={() => setMode('techniques')}
-            >
-              Study techniques
-            </button>
+      <section className="session-layout">
+        <aside className="session-sidebar">
+          <div className="session-profile">
+            <div className="session-avatar">{getInitials(user?.name || user?.email || 'SO')}</div>
+            <div>
+              <p className="session-name">{user?.name || user?.email || 'UserName'}</p>
+              <Link className="session-link" to="/profile">
+                Update profile
+              </Link>
+            </div>
           </div>
 
-          {mode === 'chat' ? (
-            <div className="panel-card chat-container">
-              <h3>Chat about this document</h3>
-              <div className="chat-messages">
-                {messages.length === 0 ? (
-                  <p className="chat-empty">Ask me anything about the document!</p>
-                ) : (
-                  messages.map((msg, idx) => (
-                    <div key={idx} className={`chat-message ${msg.role}`}>
-                      <div 
-                        className="chat-bubble" 
-                        dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br />') }}
-                      />
-                    </div>
-                  ))
-                )}
-                {loading && (
-                  <div className="chat-message assistant">
-                    <div className="chat-bubble loading">Thinking...</div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-              <div className="chat-input-container">
-                <input
-                  type="text"
-                  className="chat-input"
-                  placeholder="Ask a question..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  disabled={loading}
-                />
+          <div className="session-section">
+            <h3 className="session-section-title">Chats</h3>
+            <div className="session-list">
+              {chats.map((chat) => (
                 <button
-                  className="primary-btn"
+                  key={chat.id}
+                  className={`session-item${chat.active ? ' is-active' : ''}`}
                   type="button"
-                  onClick={handleSendMessage}
-                  disabled={loading || !input.trim()}
                 >
-                  Send
+                  <span className="session-item-meta">
+                    <span className="session-item-avatar">{getInitials(chat.name)}</span>
+                    <span>
+                      <span className="session-item-title">{chat.name}</span>
+                      <span className="session-item-preview">{chat.preview}</span>
+                    </span>
+                  </span>
+                  <span className="session-item-pill">Chat</span>
                 </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <section className="session-chat">
+          <header className="session-chat-header">
+            <div className="session-title-group">
+              <div className="session-avatar is-large">{getInitials(sessionTitle)}</div>
+              <div>
+                <h2 className="session-title">{sessionTitle}</h2>
+                <p className="session-members">9 members online</p>
               </div>
             </div>
-          ) : (
-            <div className="panel-card">
-              <h3>Study techniques</h3>
-              <ul className="panel-list">
-                <li>Generate flashcards from key concepts.</li>
-                <li>Take quick quizzes to reinforce memory.</li>
-                <li>Create spaced-repetition review sets.</li>
-              </ul>
-              <p className="panel-hint">Coming soon: pick a technique and start a guided session.</p>
+            <div className="session-actions">
+              <button className="ghost-btn" type="button">
+                Invite
+              </button>
+              <button className="primary-btn" type="button">
+                Start focus
+              </button>
             </div>
-          )}
-        </div>
+          </header>
+
+          <ChatPanel
+            documentId={doc?.documentId}
+            session={session}
+            apiBaseUrl={apiBaseUrl}
+            title="Session chat"
+            emptyMessage="Start the conversation with your study group."
+            placeholder="Message the session..."
+          />
+        </section>
       </section>
     </main>
   )
@@ -178,11 +120,12 @@ function StudySession({ doc, user, session }) {
 
 StudySession.propTypes = {
   doc: PropTypes.shape({
-    name: PropTypes.string.isRequired,
-    url: PropTypes.string.isRequired,
-    type: PropTypes.string.isRequired,
+    name: PropTypes.string,
+    url: PropTypes.string,
+    type: PropTypes.string,
     documentId: PropTypes.string,
-  }).isRequired,
+  }),
+  onLogout: PropTypes.func.isRequired,
   session: PropTypes.shape({
     access_token: PropTypes.string,
   }),

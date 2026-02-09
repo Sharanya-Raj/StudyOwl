@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import Groq from 'groq-sdk'
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
+import { createClient } from '@supabase/supabase-js'
 import {
   BlobServiceClient,
   StorageSharedKeyCredential,
@@ -42,9 +43,14 @@ const {
   GROQ_API_KEY,
   GROQ_MODEL = 'llama-3.1-8b-instant',
   GROQ_GRAPH_MODEL = 'llama-3.1-70b-versatile',
+  GROQ_EMBED_MODEL = 'text-embedding-3-large',
   GRAPH_ENRICHMENT_MODE = 'missing',
   MAX_CHUNKS_FOR_CHAT = '500',
+  EMBEDDINGS_ENABLED = 'true',
+  EMBEDDING_BATCH_SIZE = '64',
   AUTH_REQUIRED = 'false',
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_JWT_SECRET,
   SUPABASE_JWT_ISSUER,
   SUPABASE_JWKS_URL,
@@ -66,10 +72,14 @@ if (!GROQ_API_KEY) {
 
 const authRequired = !['false', '0', 'no', 'off'].includes(String(AUTH_REQUIRED).toLowerCase())
 const maxChunksForChat = Math.max(50, Number.parseInt(MAX_CHUNKS_FOR_CHAT, 10) || 500)
+const embeddingsEnabled = !['false', '0', 'no', 'off'].includes(String(EMBEDDINGS_ENABLED).toLowerCase())
+const embeddingBatchSize = Math.max(1, Number.parseInt(EMBEDDING_BATCH_SIZE, 10) || 64)
 
 let supabaseJwks = null
 const supabaseJwksUrl = SUPABASE_JWKS_URL
   || (SUPABASE_JWT_ISSUER ? `${SUPABASE_JWT_ISSUER.replace(/\/$/, '')}/.well-known/jwks.json` : null)
+
+let supabaseAdmin = null
 
 if (authRequired) {
   if (!SUPABASE_JWT_SECRET) {
@@ -92,6 +102,15 @@ if (authRequired) {
       requestHeaders: jwksHeaders,
     })
   }
+}
+
+if (embeddingsEnabled) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for embeddings')
+  }
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  })
 }
 
 // Initialize clients and containers
@@ -128,8 +147,10 @@ async function initializeServices() {
 
     console.log(`✓ Groq configured: ${GROQ_MODEL}`)
     console.log(`✓ Groq graph model: ${GROQ_GRAPH_MODEL}`)
+    console.log(`✓ Groq embed model: ${GROQ_EMBED_MODEL}`)
     console.log(`✓ Graph enrichment mode: ${GRAPH_ENRICHMENT_MODE}`)
     console.log(`✓ Auth required: ${authRequired}`)
+    console.log(`✓ Embeddings enabled: ${embeddingsEnabled}`)
   } catch (error) {
     console.error('Failed to initialize services:', error.message)
     throw error
@@ -208,10 +229,79 @@ function requireAuth(req, res, next) {
   })
 }
 
+async function createGroqEmbeddings(inputs) {
+  if (!inputs || inputs.length === 0) return []
+
+  const response = await fetch('https://api.groq.com/openai/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_EMBED_MODEL,
+      input: inputs,
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(`Groq embeddings failed: ${response.status} ${detail}`)
+  }
+
+  const data = await response.json()
+  return (data.data || []).map((item) => item.embedding)
+}
+
+async function storeDocumentEmbeddings({ chunks, userId, documentId }) {
+  if (!embeddingsEnabled || !supabaseAdmin) return
+  if (!userId) {
+    console.warn('Skipping embeddings: missing user id')
+    return
+  }
+  if (!chunks || chunks.length === 0) return
+
+  for (let i = 0; i < chunks.length; i += embeddingBatchSize) {
+    const batch = chunks.slice(i, i + embeddingBatchSize)
+    const texts = batch.map((chunk) => chunk.content || '')
+    const embeddings = await createGroqEmbeddings(texts)
+
+    const rows = batch.map((chunk, index) => ({
+      id: chunk.id,
+      user_id: userId,
+      document_id: documentId,
+      chunk_text: chunk.content || '',
+      embedding: embeddings[index],
+      created_at: new Date().toISOString(),
+    }))
+
+    const { error } = await supabaseAdmin.from('document_embeddings').insert(rows)
+    if (error) {
+      throw new Error(`Supabase insert failed: ${error.message}`)
+    }
+  }
+}
+
+async function storeSingleEmbedding({ table, payload, text }) {
+  if (!embeddingsEnabled || !supabaseAdmin) return
+  const [embedding] = await createGroqEmbeddings([text])
+
+  const { error } = await supabaseAdmin.from(table).insert({
+    ...payload,
+    embedding,
+    created_at: new Date().toISOString(),
+  })
+
+  if (error) {
+    throw new Error(`Supabase insert failed: ${error.message}`)
+  }
+}
+
 app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) => {
   console.log('📤 Upload request received')
   try {
     const { studentId, courseId } = req.body
+    const userId = req.user?.sub || req.user?.user_id || null
     const file = req.file
     console.log('   studentId:', studentId, 'courseId:', courseId)
     console.log('   file:', file?.originalname, file?.mimetype, file?.size)
@@ -361,6 +451,7 @@ app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) 
     let totalChunks = 0
     const BATCH_SIZE = 50
     const MAX_CHUNKS_PER_PAGE = 500 // Safety limit
+    let embeddingStarted = false
     
     // Estimate total chunks by sampling first page
     let estimatedTotalChunks = 100
@@ -459,6 +550,26 @@ app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) 
           await cosmosContainer.items.bulk(
             batch.map((doc) => ({ operationType: 'Create', resourceBody: doc })),
           )
+          if (embeddingsEnabled && !embeddingStarted) {
+            embeddingStarted = true
+            uploadProgress.set(documentId, {
+              stage: 'embedding',
+              progress: 95,
+              startTime: uploadProgress.get(documentId).startTime,
+              message: 'Creating embeddings for study search...',
+            })
+          }
+          await storeDocumentEmbeddings({ chunks: batch, userId, documentId })
+          if (embeddingsEnabled && !embeddingStarted) {
+            embeddingStarted = true
+            uploadProgress.set(documentId, {
+              stage: 'embedding',
+              progress: 95,
+              startTime: uploadProgress.get(documentId).startTime,
+              message: 'Creating embeddings for study search...',
+            })
+          }
+          await storeDocumentEmbeddings({ chunks: batch, userId, documentId })
           totalChunks += batch.length
           console.log(`      Wrote ${totalChunks} chunks total (${pageChunkCount} from page ${page.pageNumber})...`)
           
@@ -480,6 +591,16 @@ app.post('/api/documents', requireAuth, upload.single('file'), async (req, res) 
         await cosmosContainer.items.bulk(
           batch.map((doc) => ({ operationType: 'Create', resourceBody: doc })),
         )
+        if (embeddingsEnabled && !embeddingStarted) {
+          embeddingStarted = true
+          uploadProgress.set(documentId, {
+            stage: 'embedding',
+            progress: 95,
+            startTime: uploadProgress.get(documentId).startTime,
+            message: 'Creating embeddings for study search...',
+          })
+        }
+        await storeDocumentEmbeddings({ chunks: batch, userId, documentId })
         totalChunks += batch.length
         console.log(`      Wrote ${totalChunks} chunks total (final batch from page ${page.pageNumber})...`)
         
@@ -669,6 +790,90 @@ Instructions:
   } catch (error) {
     console.error('Chat error:', error.message)
     return res.status(500).json({ error: 'Chat failed', detail: error.message })
+  }
+})
+
+app.post('/api/embeddings/user', requireAuth, express.json(), async (req, res) => {
+  try {
+    const userId = req.user?.sub || req.user?.user_id
+    const { sourceField, text } = req.body
+
+    if (!userId || !sourceField || !text) {
+      return res.status(400).json({ error: 'userId, sourceField, and text are required' })
+    }
+
+    await storeSingleEmbedding({
+      table: 'user_embeddings',
+      payload: {
+        id: uuidv4(),
+        user_id: userId,
+        source_field: sourceField,
+      },
+      text,
+    })
+
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('User embedding error:', error.message)
+    return res.status(500).json({ error: 'Embedding failed', detail: error.message })
+  }
+})
+
+app.post('/api/embeddings/course', requireAuth, express.json(), async (req, res) => {
+  try {
+    const userId = req.user?.sub || req.user?.user_id
+    const { courseCode, courseName, text } = req.body
+
+    if (!userId || !courseCode || !courseName) {
+      return res.status(400).json({ error: 'userId, courseCode, and courseName are required' })
+    }
+
+    const embedText = text || `${courseCode} ${courseName}`
+
+    await storeSingleEmbedding({
+      table: 'course_embeddings',
+      payload: {
+        id: uuidv4(),
+        user_id: userId,
+        course_code: courseCode,
+        course_name: courseName,
+      },
+      text: embedText,
+    })
+
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('Course embedding error:', error.message)
+    return res.status(500).json({ error: 'Embedding failed', detail: error.message })
+  }
+})
+
+app.post('/api/embeddings/preference', requireAuth, express.json(), async (req, res) => {
+  try {
+    const userId = req.user?.sub || req.user?.user_id
+    const { preferenceKey, preferenceValue } = req.body
+
+    if (!userId || !preferenceKey || !preferenceValue) {
+      return res.status(400).json({ error: 'userId, preferenceKey, and preferenceValue are required' })
+    }
+
+    const embedText = `${preferenceKey}: ${preferenceValue}`
+
+    await storeSingleEmbedding({
+      table: 'preference_embeddings',
+      payload: {
+        id: uuidv4(),
+        user_id: userId,
+        preference_key: preferenceKey,
+        preference_value: preferenceValue,
+      },
+      text: embedText,
+    })
+
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('Preference embedding error:', error.message)
+    return res.status(500).json({ error: 'Embedding failed', detail: error.message })
   }
 })
 

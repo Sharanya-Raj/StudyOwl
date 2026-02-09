@@ -1,29 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 :root {
-  font-family: 'Sora', 'Segoe UI', sans-serif;
+  font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
   line-height: 1.6;
   font-weight: 400;
-  background-color: #0c111b;
-  color: #e6edf3;
+  background-color: #f6f1e9;
+  color: #2f241d;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --bg: #0c111b;
-  --bg-soft: #0f172a;
-  --panel: #111827;
-  --panel-strong: #0e1524;
-  --stroke: #1f2a3d;
-  --text: #e6edf3;
-  --text-muted: #9aa6b2;
-  --accent: #3bc9c9;
-  --accent-strong: #2dd4bf;
-  --accent-warm: #f59e0b;
-  --accent-soft: #9dd9d9;
-  --success: #22c55e;
-  --danger: #f87171;
+  --bg: #f6f1e9;
+  --bg-soft: #efe6da;
+  --panel: #fffaf3;
+  --panel-strong: #f4e8d9;
+  --stroke: #dbcdbf;
+  --text: #2f241d;
+  --text-muted: #6b5b50;
+  --accent: #c08a3e;
+  --accent-strong: #a86a2b;
+  --accent-warm: #d4a373;
+  --accent-soft: #edd8c1;
+  --accent-green: #4a6b57;
+  --accent-rose: #b77a7a;
+  --success: #4a6b57;
+  --danger: #b76856;
 }
 
 * {
@@ -34,10 +36,10 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 15% 15%, rgba(59, 200, 201, 0.12), transparent 40%),
-    radial-gradient(circle at 90% 10%, rgba(245, 158, 11, 0.12), transparent 35%),
-    radial-gradient(circle at 70% 80%, rgba(45, 212, 191, 0.08), transparent 50%),
-    #0c111b;
+    radial-gradient(circle at 10% 15%, rgba(212, 163, 115, 0.2), transparent 45%),
+    radial-gradient(circle at 90% 10%, rgba(183, 122, 122, 0.18), transparent 40%),
+    radial-gradient(circle at 70% 85%, rgba(74, 107, 87, 0.12), transparent 50%),
+    #f6f1e9;
 }
 
 a {
@@ -46,7 +48,7 @@ a {
 }
 
 a:hover {
-  color: #7dd3fc;
+  color: var(--accent-strong);
 }
 
 button,
