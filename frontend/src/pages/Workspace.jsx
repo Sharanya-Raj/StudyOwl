@@ -4,9 +4,11 @@ import TopBar from '../components/TopBar'
 import ChatPanel from '../components/ChatPanel'
 import UploadPanel from '../components/UploadPanel'
 
-function Workspace({ user, session, onLogout, documentId, onUploadDoc, onSetDocumentId }) {
+function Workspace({ user, session, onLogout, documentId, studyDoc, onUploadDoc, onSetDocumentId }) {
   const [availability, setAvailability] = useState('available')
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
+  const isPdf = studyDoc?.type === 'application/pdf'
+  const isImage = studyDoc?.type?.startsWith('image/')
 
   return (
     <main className="page-shell">
@@ -49,6 +51,31 @@ function Workspace({ user, session, onLogout, documentId, onUploadDoc, onSetDocu
           />
         </div>
         <div className="workspace-right">
+          {studyDoc?.url ? (
+            <div className="panel-card workspace-preview">
+              <div className="panel-header">
+                <h3>Document preview</h3>
+                <span className="panel-pill">Uploaded</span>
+              </div>
+              <div className="doc-preview">
+                {isPdf ? (
+                  <embed src={studyDoc.url} type="application/pdf" className="doc-frame" />
+                ) : isImage ? (
+                  <img src={studyDoc.url} alt={studyDoc.name || 'Uploaded file'} className="doc-image" />
+                ) : (
+                  <iframe title="Document preview" src={studyDoc.url} className="doc-frame" />
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="panel-card workspace-preview">
+              <div className="panel-header">
+                <h3>Document preview</h3>
+                <span className="panel-pill">Waiting</span>
+              </div>
+              <p>Upload a document to preview it here.</p>
+            </div>
+          )}
           <div className="panel-card">
             <div className="panel-header">
               <h3>Extracted notes</h3>
@@ -86,6 +113,12 @@ Workspace.propTypes = {
   }),
   onLogout: PropTypes.func.isRequired,
   documentId: PropTypes.string,
+  studyDoc: PropTypes.shape({
+    name: PropTypes.string,
+    url: PropTypes.string,
+    type: PropTypes.string,
+    documentId: PropTypes.string,
+  }),
   onUploadDoc: PropTypes.func.isRequired,
   onSetDocumentId: PropTypes.func.isRequired,
 }

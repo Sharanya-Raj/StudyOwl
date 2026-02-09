@@ -769,6 +769,18 @@
   color: #3a2d23;
 }
 
+.session-chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .course-form {
   display: grid;
   gap: 10px;
@@ -1176,7 +1188,7 @@
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 1.4fr);
   gap: 18px;
 }
 
@@ -1185,6 +1197,22 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.workspace-right {
+  display: grid;
+  grid-template-rows: minmax(520px, 1fr) auto;
+  align-content: start;
+}
+
+.workspace-preview {
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-preview .doc-preview {
+  height: 100%;
+  min-height: 520px;
 }
 
 .profile-details {

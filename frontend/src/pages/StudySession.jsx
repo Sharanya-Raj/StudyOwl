@@ -2,9 +2,8 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import TopBar from '../components/TopBar'
-import ChatPanel from '../components/ChatPanel'
 
-function StudySession({ doc, user, session, onLogout }) {
+function StudySession({ user, session, onLogout }) {
   const storageKey = 'studyowl:courses'
   const [availability, setAvailability] = useState('available')
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
@@ -25,8 +24,8 @@ function StudySession({ doc, user, session, onLogout }) {
   const [matchError, setMatchError] = useState('')
   const [matchesLoading, setMatchesLoading] = useState(false)
   const [selectedBuddy, setSelectedBuddy] = useState(null)
-  const [requestSent, setRequestSent] = useState(false)
-  const [sessionAccepted, setSessionAccepted] = useState(false)
+  const [requests, setRequests] = useState({ incoming: [], outgoing: [], accepted: [] })
+  const [requestError, setRequestError] = useState('')
 
   const getInitials = (name) =>
     name
@@ -60,6 +59,10 @@ function StudySession({ doc, user, session, onLogout }) {
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
+  useEffect(() => {
+    fetchRequests()
+  }, [])
+
   const fetchMatches = async () => {
     setMatchError('')
     setMatchesLoading(true)
@@ -90,8 +93,6 @@ function StudySession({ doc, user, session, onLogout }) {
 
       setMatches(data.matches || [])
       setSelectedBuddy(null)
-      setRequestSent(false)
-      setSessionAccepted(false)
     } catch (error) {
       console.error('Match fetch failed:', error)
       setMatchError(error.message || 'Unable to load matches.')
@@ -100,20 +101,119 @@ function StudySession({ doc, user, session, onLogout }) {
     }
   }
 
+  const fetchRequests = async () => {
+    setRequestError('')
+    try {
+      const token = session?.access_token
+      if (!token) return
+
+      const response = await fetch(`${apiBaseUrl}/sessions/requests`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load requests.')
+      }
+
+      setRequests({
+        incoming: data.incoming || [],
+        outgoing: data.outgoing || [],
+        accepted: data.accepted || [],
+      })
+    } catch (error) {
+      console.error('Request fetch failed:', error)
+      setRequestError(error.message || 'Unable to load requests.')
+    }
+  }
+
+  const getBuddyStatus = (buddyId) => {
+    if (!buddyId) return { status: 'none' }
+
+    const accepted = requests.accepted.find(
+      (request) => request.requester_id === buddyId || request.recipient_id === buddyId,
+    )
+    if (accepted) {
+      return { status: 'accepted', request: accepted }
+    }
+
+    const outgoing = requests.outgoing.find((request) => request.recipient_id === buddyId)
+    if (outgoing) {
+      return { status: 'outgoing', request: outgoing }
+    }
+
+    const incoming = requests.incoming.find((request) => request.requester_id === buddyId)
+    if (incoming) {
+      return { status: 'incoming', request: incoming }
+    }
+
+    return { status: 'none' }
+  }
+
   const handleSelectBuddy = (buddy) => {
     setSelectedBuddy(buddy)
-    setRequestSent(false)
-    setSessionAccepted(false)
   }
 
-  const handleSendRequest = () => {
+  const handleSendRequest = async () => {
     if (!selectedBuddy) return
-    setRequestSent(true)
+    setRequestError('')
+
+    try {
+      const token = session?.access_token
+      if (!token) return
+
+      const response = await fetch(`${apiBaseUrl}/sessions/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ to_user_id: selectedBuddy.user_id }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Request failed.')
+      }
+
+      await fetchRequests()
+    } catch (error) {
+      console.error('Request send failed:', error)
+      setRequestError(error.message || 'Unable to send request.')
+    }
   }
 
-  const handleAcceptSession = () => {
+  const handleRespond = async (decision) => {
     if (!selectedBuddy) return
-    setSessionAccepted(true)
+    const status = getBuddyStatus(selectedBuddy.user_id)
+    if (!status.request?.id) return
+
+    setRequestError('')
+
+    try {
+      const token = session?.access_token
+      if (!token) return
+
+      const response = await fetch(`${apiBaseUrl}/sessions/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ request_id: status.request.id, decision }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Response failed.')
+      }
+
+      await fetchRequests()
+    } catch (error) {
+      console.error('Request respond failed:', error)
+      setRequestError(error.message || 'Unable to respond to request.')
+    }
   }
 
   return (
@@ -215,7 +315,9 @@ function StudySession({ doc, user, session, onLogout }) {
             </h3>
             <div className="session-list">
               {showBuddies ? (
-                matches.length ? (
+                matchesLoading ? (
+                  <p className="session-empty">Loading matches...</p>
+                ) : matches.length ? (
                   matches.map((match) => (
                     <button
                       key={match.user_id}
@@ -234,7 +336,15 @@ function StudySession({ doc, user, session, onLogout }) {
                           </span>
                         </span>
                       </span>
-                      <span className="session-item-pill">Match</span>
+                      <span className="session-item-pill">
+                        {getBuddyStatus(match.user_id).status === 'accepted'
+                          ? 'Accepted'
+                          : getBuddyStatus(match.user_id).status === 'incoming'
+                            ? 'Incoming'
+                            : getBuddyStatus(match.user_id).status === 'outgoing'
+                              ? 'Pending'
+                              : 'Match'}
+                      </span>
                     </button>
                   ))
                 ) : (
@@ -269,27 +379,39 @@ function StudySession({ doc, user, session, onLogout }) {
               <div>
                 <h2 className="session-title">{sessionTitle}</h2>
                 <p className="session-members">
-                  {sessionAccepted && selectedBuddy
-                    ? `Matched with ${selectedBuddy.name || 'Study Buddy'}`
+                  {selectedBuddy
+                    ? getBuddyStatus(selectedBuddy.user_id).status === 'accepted'
+                      ? `Matched with ${selectedBuddy.name || 'Study Buddy'}`
+                      : getBuddyStatus(selectedBuddy.user_id).status === 'incoming'
+                        ? 'Incoming request pending your response'
+                        : getBuddyStatus(selectedBuddy.user_id).status === 'outgoing'
+                          ? 'Request sent, waiting on response'
+                          : 'Send a request to connect'
                     : 'Select a buddy or session to continue'}
                 </p>
               </div>
             </div>
             <div className="session-actions">
               {selectedBuddy ? (
-                sessionAccepted ? (
+                getBuddyStatus(selectedBuddy.user_id).status === 'accepted' ? (
                   <button className="primary-btn" type="button">
                     Start focus
                   </button>
-                ) : (
+                ) : getBuddyStatus(selectedBuddy.user_id).status === 'incoming' ? (
                   <>
-                    <button className="ghost-btn" type="button" onClick={handleSendRequest}>
-                      {requestSent ? 'Request sent' : 'Send request'}
+                    <button className="ghost-btn" type="button" onClick={() => handleRespond('declined')}>
+                      Decline
                     </button>
-                    <button className="primary-btn" type="button" onClick={handleAcceptSession}>
-                      Simulate accept
+                    <button className="primary-btn" type="button" onClick={() => handleRespond('accepted')}>
+                      Accept
                     </button>
                   </>
+                ) : (
+                  <button className="ghost-btn" type="button" onClick={handleSendRequest}>
+                    {getBuddyStatus(selectedBuddy.user_id).status === 'outgoing'
+                      ? 'Request sent'
+                      : 'Send request'}
+                  </button>
                 )
               ) : (
                 <button className="ghost-btn" type="button" disabled>
@@ -298,15 +420,26 @@ function StudySession({ doc, user, session, onLogout }) {
               )}
             </div>
           </header>
-          {sessionAccepted ? (
-            <ChatPanel
-              documentId={null}
-              session={session}
-              apiBaseUrl={apiBaseUrl}
-              title="Session chat"
-              emptyMessage="Start the conversation with your study group."
-              placeholder="Message the session..."
-            />
+          {requestError ? <p className="form-error">{requestError}</p> : null}
+          {selectedBuddy && getBuddyStatus(selectedBuddy.user_id).status === 'accepted' ? (
+            <div className="panel-card session-chat-panel">
+              <div className="panel-header">
+                <h3>Session chat</h3>
+                <span className="panel-pill">Accepted</span>
+              </div>
+              <p className="session-empty">Session chat is ready. Real-time chat coming next.</p>
+              <div className="session-input-row">
+                <input
+                  className="field-input"
+                  type="text"
+                  placeholder="Messaging will be enabled after realtime is wired up."
+                  disabled
+                />
+                <button className="primary-btn" type="button" disabled>
+                  Send
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="panel-card session-locked">
               <h3>Chat locked</h3>
@@ -322,12 +455,6 @@ function StudySession({ doc, user, session, onLogout }) {
 }
 
 StudySession.propTypes = {
-  doc: PropTypes.shape({
-    name: PropTypes.string,
-    url: PropTypes.string,
-    type: PropTypes.string,
-    documentId: PropTypes.string,
-  }),
   onLogout: PropTypes.func.isRequired,
   session: PropTypes.shape({
     access_token: PropTypes.string,

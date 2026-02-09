@@ -159,6 +159,7 @@ function App() {
                 onUploadDoc={handleDocUpload}
                 onSetDocumentId={setDocumentId}
                 documentId={studyDoc?.documentId}
+                studyDoc={studyDoc}
               />
             ) : (
               <Navigate to="/login" replace />
@@ -187,7 +188,7 @@ function App() {
                 <div className="card">Loading session...</div>
               </div>
             ) : isAuthed ? (
-              <StudySession doc={studyDoc} user={user} session={session} onLogout={handleLogout} />
+              <StudySession user={user} session={session} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )

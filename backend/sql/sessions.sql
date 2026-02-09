@@ -26,6 +26,24 @@ create table if not exists public.user_embeddings (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.study_requests (
+  id uuid primary key,
+  requester_id uuid not null,
+  recipient_id uuid not null,
+  status text not null check (status in ('pending', 'accepted', 'declined')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists study_requests_unique_pair_idx
+  on public.study_requests (requester_id, recipient_id);
+
+create index if not exists study_requests_requester_idx
+  on public.study_requests (requester_id);
+
+create index if not exists study_requests_recipient_idx
+  on public.study_requests (recipient_id);
+
 create index if not exists user_embeddings_user_id_idx
   on public.user_embeddings (user_id, created_at desc);
 

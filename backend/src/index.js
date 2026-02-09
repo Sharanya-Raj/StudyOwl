@@ -1035,6 +1035,170 @@ app.get('/sessions/available', requireAuth, async (req, res) => {
   }
 })
 
+app.get('/sessions/requests', requireAuth, async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Supabase is not configured on the backend.' })
+    }
+
+    const userId = req.user?.sub || req.user?.user_id
+    if (!userId) {
+      return res.status(401).json({ error: 'Missing user context.' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('study_requests')
+      .select('id, requester_id, recipient_id, status, created_at, updated_at')
+      .or(`requester_id.eq.${userId},recipient_id.eq.${userId}`)
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    const incoming = (data || []).filter(
+      (row) => row.recipient_id === userId && row.status === 'pending',
+    )
+    const outgoing = (data || []).filter(
+      (row) => row.requester_id === userId && row.status === 'pending',
+    )
+    const accepted = (data || []).filter((row) => row.status === 'accepted')
+
+    return res.json({ incoming, outgoing, accepted })
+  } catch (error) {
+    console.error('Study request fetch error:', error.message)
+    return res.status(500).json({ error: 'Failed to fetch study requests.' })
+  }
+})
+
+app.post('/sessions/request', requireAuth, express.json(), async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Supabase is not configured on the backend.' })
+    }
+
+    const userId = req.user?.sub || req.user?.user_id
+    const { to_user_id: toUserId } = req.body
+
+    if (!userId || !toUserId) {
+      return res.status(400).json({ error: 'to_user_id is required.' })
+    }
+
+    if (userId === toUserId) {
+      return res.status(400).json({ error: 'Cannot request yourself.' })
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('study_requests')
+      .select('id, requester_id, recipient_id, status')
+      .or(
+        `and(requester_id.eq.${userId},recipient_id.eq.${toUserId}),and(requester_id.eq.${toUserId},recipient_id.eq.${userId})`,
+      )
+      .limit(1)
+      .maybeSingle()
+
+    if (existingError) {
+      return res.status(500).json({ error: existingError.message })
+    }
+
+    if (existing) {
+      if (existing.status === 'declined' && existing.requester_id === userId) {
+        const { data: updated, error: updateError } = await supabaseAdmin
+          .from('study_requests')
+          .update({ status: 'pending', updated_at: new Date().toISOString() })
+          .eq('id', existing.id)
+          .select('id, requester_id, recipient_id, status, created_at, updated_at')
+          .single()
+
+        if (updateError) {
+          return res.status(500).json({ error: updateError.message })
+        }
+
+        return res.json({ request: updated })
+      }
+
+      return res.json({ request: existing })
+    }
+
+    const payload = {
+      id: uuidv4(),
+      requester_id: userId,
+      recipient_id: toUserId,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('study_requests')
+      .insert(payload)
+      .select('id, requester_id, recipient_id, status, created_at, updated_at')
+      .single()
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    return res.status(201).json({ request: data })
+  } catch (error) {
+    console.error('Study request create error:', error.message)
+    return res.status(500).json({ error: 'Failed to create study request.' })
+  }
+})
+
+app.post('/sessions/respond', requireAuth, express.json(), async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Supabase is not configured on the backend.' })
+    }
+
+    const userId = req.user?.sub || req.user?.user_id
+    const { request_id: requestId, decision } = req.body
+    const normalizedDecision = String(decision || '').toLowerCase()
+
+    if (!userId || !requestId) {
+      return res.status(400).json({ error: 'request_id is required.' })
+    }
+
+    if (!['accepted', 'declined'].includes(normalizedDecision)) {
+      return res.status(400).json({ error: 'decision must be accepted or declined.' })
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('study_requests')
+      .select('id, requester_id, recipient_id, status')
+      .eq('id', requestId)
+      .maybeSingle()
+
+    if (existingError) {
+      return res.status(500).json({ error: existingError.message })
+    }
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Request not found.' })
+    }
+
+    if (existing.recipient_id !== userId) {
+      return res.status(403).json({ error: 'Not authorized to respond to this request.' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('study_requests')
+      .update({ status: normalizedDecision, updated_at: new Date().toISOString() })
+      .eq('id', requestId)
+      .select('id, requester_id, recipient_id, status, created_at, updated_at')
+      .single()
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    return res.json({ request: data })
+  } catch (error) {
+    console.error('Study request respond error:', error.message)
+    return res.status(500).json({ error: 'Failed to respond to study request.' })
+  }
+})
+
 app.get('/health', (req, res) => {
   res.json({ ok: true })
 })
