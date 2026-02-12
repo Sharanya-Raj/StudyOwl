@@ -61,191 +61,112 @@ const initialChat = {
 };
 
 
+
 import TopBar from '../components/TopBar';
+import SessionFilterBar from '../components/SessionFilterBar';
+import AvailableSessionsList from '../components/AvailableSessionsList';
+import ConnectedList from '../components/ConnectedList';
+import SessionChat from '../components/SessionChat';
+
 
 
 const StudySession = ({ user, onLogout }) => {
-  const [mode, setMode] = useState('choose'); // choose | find | connected
-  const [filters, setFilters] = useState({ class: '', timing: '', date: '' });
-  const [showOwlsOnly, setShowOwlsOnly] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState(null);
-  const [chatMessages, setChatMessages] = useState(initialChat);
-  const [chatInput, setChatInput] = useState('');
+  // Modes: 'find', 'connected'
+  const [viewMode, setViewMode] = useState('find');
+  const [filter, setFilter] = useState({ class: '', date: '', time: '' });
+  const [showOnlyBuddies, setShowOnlyBuddies] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+  const [chatMessages, setChatMessages] = useState({ ...initialChat });
 
-  // Filtered sessions
-  const availableSessions = fakeSessions.filter(s => {
+  // Fake data mapping for new component props
+  const sessions = fakeSessions.map(s => ({
+    ...s,
+    title: s.class,
+    time: s.timing,
+    location: s.details,
+  }));
+  const studyBuddies = fakeBuddies.map(b => ({ ...b, class: 'StudyOwl', title: b.name }));
+  const connectedSessions = sessions.filter(s => s.connected);
+  const connectedBuddies = studyBuddies.filter(b => b.connected);
+
+  // Filtered sessions for AvailableSessionsList
+  const filteredSessions = sessions.filter(s => {
     if (s.connected) return false;
-    if (showOwlsOnly && !s.isOwl) return false;
-    if (filters.class && !s.class.toLowerCase().includes(filters.class.toLowerCase())) return false;
-    if (filters.timing && !s.timing.toLowerCase().includes(filters.timing.toLowerCase())) return false;
-    if (filters.date && s.date !== filters.date) return false;
+    if (showOnlyBuddies) return false;
+    if (filter.class && !s.class.toLowerCase().includes(filter.class.toLowerCase())) return false;
+    if (filter.date && s.date !== filter.date) return false;
+    if (filter.time && s.timing !== filter.time) return false;
     return true;
   });
 
-  const connectedSessions = fakeSessions.filter(s => s.connected);
-  const connectedBuddies = fakeBuddies.filter(b => b.connected);
-
   // Handlers
-  const handleFilterChange = e => {
-    setFilters({ ...filters, [e.target.name]: e.target.value });
+  const handleRequestInvite = (item, type) => {
+    alert(`Invite requested for ${type === 'buddy' ? 'StudyOwl' : 'session'}: ${item.title || item.name}`);
   };
 
-  const handleRequestInvite = id => {
-    alert('Invite requested for session/StudyOwl ID: ' + id);
-  };
-
-  const handleSendMessage = () => {
-    if (!chatInput.trim() || !selectedSessionId) return;
+  const handleSendMessage = (msg) => {
+    if (!selectedId) return;
     setChatMessages(prev => ({
       ...prev,
-      [selectedSessionId]: [
-        ...(prev[selectedSessionId] || []),
-        { sender: 'You', text: chatInput },
+      [selectedId]: [
+        ...(prev[selectedId] || []),
+        { sender: 'You', text: msg, time: new Date().toLocaleTimeString() },
       ],
     }));
-    setChatInput('');
   };
 
-  // UI rendering
+  const handleViewDetails = () => {
+    alert('Session details popup (not implemented)');
+  };
+
+  // Find selected session or buddy
+  const selectedSession = connectedSessions.find(s => s.id === selectedId);
+  const selectedBuddy = connectedBuddies.find(b => b.id === selectedId);
+  const chat = chatMessages[selectedId] || [];
+
   return (
     <main className="page-shell">
       <TopBar user={user} onLogout={onLogout} availability="available" onToggleAvailability={() => {}} notificationsCount={0} />
-      <div className="ss-center-wrap">
-        {mode === 'choose' && (
-          <div className="ss-choose-container">
-            <div className="ss-card ss-choose-card">
-              <h2 className="rustic-title" style={{marginBottom: 24}}>Study Sessions</h2>
-              <button className="primary-btn" onClick={() => setMode('find')}>Find a Study Session</button>
-              <button className="primary-btn" style={{background: 'var(--accent-soft)', color: 'var(--accent-strong)'}} onClick={() => alert('Session creation not implemented.')}>Create My Own Session</button>
-              <button className="primary-btn" style={{background: 'var(--panel-strong)', color: 'var(--accent)'}} onClick={() => setMode('connected')}>View My Sessions & Study Buddies</button>
-            </div>
-          </div>
+      <div className="ss-center-wrap" style={{ maxWidth: 1100, margin: '0 auto', width: '100%' }}>
+        <SessionFilterBar
+          filter={filter}
+          setFilter={setFilter}
+          onCreateSession={() => alert('Session creation not implemented.')}
+          onViewConnected={() => setViewMode('connected')}
+          onFindSessions={() => setViewMode('find')}
+          viewMode={viewMode}
+        />
+        {viewMode === 'find' && (
+          <AvailableSessionsList
+            sessions={filteredSessions}
+            studyBuddies={studyBuddies}
+            showOnlyBuddies={showOnlyBuddies}
+            onToggleBuddies={() => setShowOnlyBuddies(b => !b)}
+            onRequestInvite={handleRequestInvite}
+          />
         )}
-        {mode === 'find' && (
-          <div className="ss-main-bg">
-            <div className="ss-header-row">
-              <button className="ghost-btn" onClick={() => setMode('choose')}>← Back</button>
-              <h2 className="rustic-title">Find an Existing Study Session</h2>
-            </div>
-            <div className="ss-filter-bar">
-              <input
-                className="ss-input"
-                name="class"
-                placeholder="Class (e.g. Math 101)"
-                value={filters.class}
-                onChange={handleFilterChange}
-              />
-              <input
-                className="ss-input"
-                name="timing"
-                placeholder="Timing (e.g. 10:00 AM)"
-                value={filters.timing}
-                onChange={handleFilterChange}
-              />
-              <input
-                className="ss-input"
-                name="date"
-                type="date"
-                value={filters.date}
-                onChange={handleFilterChange}
-              />
-              <label className="ss-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={showOwlsOnly}
-                  onChange={e => setShowOwlsOnly(e.target.checked)}
-                />{' '}
-                Show only StudyOwls
-              </label>
-            </div>
-            <div className="ss-session-list">
-              {availableSessions.length === 0 && <div className="ss-empty">No sessions found.</div>}
-              {availableSessions.map(session => (
-                <div key={session.id} className="ss-card ss-session-card">
-                  <h4 className="ss-session-title">{session.class}</h4>
-                  <div className="ss-session-meta"><b>Host:</b> {session.host}</div>
-                  <div className="ss-session-meta"><b>Timing:</b> {session.timing}</div>
-                  <div className="ss-session-meta"><b>Date:</b> {session.date}</div>
-                  <div className="ss-session-meta"><b>Details:</b> {session.details}</div>
-                  <button className="primary-btn" style={{marginTop: 10}} onClick={() => handleRequestInvite(session.id)}>Request Invite</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {mode === 'connected' && (
-          <div className="ss-main-bg ss-connected-layout">
-            <div className="ss-connected-sidebar">
-              <h3 className="ss-sidebar-title">My Study Sessions</h3>
-              {connectedSessions.length === 0 && <div className="ss-empty">No connected sessions.</div>}
-              {connectedSessions.map(s => (
-                <div
-                  key={s.id}
-                  className={`ss-sidebar-item${selectedSessionId === s.id ? ' ss-sidebar-item-active' : ''}`}
-                  onClick={() => setSelectedSessionId(s.id)}
-                >
-                  <b>{s.class}</b>
-                  <div className="ss-sidebar-meta">{s.timing} | {s.date}</div>
-                </div>
-              ))}
-              <h3 className="ss-sidebar-title" style={{ marginTop: 30 }}>My Study Buddies</h3>
-              {connectedBuddies.length === 0 && <div className="ss-empty">No study buddies.</div>}
-              {connectedBuddies.map(b => (
-                <div
-                  key={b.id}
-                  className={`ss-sidebar-item${selectedSessionId === b.id ? ' ss-sidebar-item-active' : ''}`}
-                  onClick={() => setSelectedSessionId(b.id)}
-                >
-                  <b>{b.name}</b>
-                </div>
-              ))}
-            </div>
-            <div className="ss-connected-main">
-              {!selectedSessionId && (
+        {viewMode === 'connected' && (
+          <div style={{ display: 'flex', gap: 24, minHeight: 350 }}>
+            <ConnectedList
+              connectedSessions={connectedSessions}
+              connectedBuddies={connectedBuddies}
+              onSelectSession={s => setSelectedId(s.id)}
+              onSelectBuddy={b => setSelectedId(b.id)}
+              selectedId={selectedId}
+            />
+            <div style={{ flex: 1 }}>
+              {selectedId ? (
+                <SessionChat
+                  sessionOrBuddy={selectedSession || selectedBuddy}
+                  chat={chat}
+                  onSendMessage={handleSendMessage}
+                  onViewDetails={handleViewDetails}
+                />
+              ) : (
                 <div className="ss-empty ss-chat-empty">Select a session or buddy to start chatting.</div>
               )}
-              {selectedSessionId && (
-                <div className="ss-chat-card">
-                  <div className="ss-chat-header">
-                    <button className="ghost-btn" onClick={() => alert('Session details popup (not implemented)')} style={{ marginRight: 12 }}>View Session Details</button>
-                    <span className="ss-chat-title">
-                      {(() => {
-                        const s = connectedSessions.find(x => x.id === selectedSessionId);
-                        if (s) return s.class + ' (' + s.timing + ')';
-                        const b = connectedBuddies.find(x => x.id === selectedSessionId);
-                        if (b) return b.name + ' (StudyOwl)';
-                        return '';
-                      })()}
-                    </span>
-                  </div>
-                  <div className="ss-chat-messages">
-                    {(chatMessages[selectedSessionId] || []).map((msg, idx) => (
-                      <div key={idx} className={`ss-chat-msg${msg.sender === 'You' ? ' ss-chat-msg-self' : ''}`}>
-                        <span className="ss-chat-bubble">
-                          <b>{msg.sender}:</b> {msg.text}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="ss-chat-input-row">
-                    <input
-                      className="ss-input"
-                      type="text"
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleSendMessage(); }}
-                      placeholder="Type a message..."
-                      disabled={!selectedSessionId}
-                    />
-                    <button className="primary-btn" onClick={handleSendMessage} disabled={!chatInput.trim() || !selectedSessionId}>Send</button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
-        )}
-        {mode !== 'choose' && mode !== 'find' && mode !== 'connected' && (
-          <div className="ss-main-bg"><div className="ss-empty">Loading...</div></div>
         )}
       </div>
     </main>
