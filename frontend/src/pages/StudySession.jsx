@@ -1,467 +1,255 @@
-import PropTypes from 'prop-types'
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import TopBar from '../components/TopBar'
 
-function StudySession({ user, session, onLogout }) {
-  const storageKey = 'studyowl:courses'
-  const [availability, setAvailability] = useState('available')
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
-  const sessionTitle = 'Study Session'
-  const currentSessions = [
-    { id: 'susan', name: "Susan's Study Session", preview: 'Next: review chapter 4', active: true },
-    { id: 'jake', name: 'Jake Trivedi', preview: 'Quiz at 6 PM', active: false },
-    { id: 'michelle', name: 'Michelle Ross', preview: 'Group notes uploaded', active: false },
-    { id: 'naina', name: "Naina Raj's Study Session", preview: 'Looking for 2 more', active: false },
-    { id: 'mia', name: 'Mia Shah', preview: 'Scheduling', active: false },
-  ]
-  const [courses, setCourses] = useState([])
-  const [selectedCourse, setSelectedCourse] = useState('')
-  const [timeFilter, setTimeFilter] = useState('today')
-  const [selectedDate, setSelectedDate] = useState('')
-  const [showBuddies, setShowBuddies] = useState(true)
-  const [matches, setMatches] = useState([])
-  const [matchError, setMatchError] = useState('')
-  const [matchesLoading, setMatchesLoading] = useState(false)
-  const [selectedBuddy, setSelectedBuddy] = useState(null)
-  const [requests, setRequests] = useState({ incoming: [], outgoing: [], accepted: [] })
-  const [requestError, setRequestError] = useState('')
+import React, { useState } from 'react';
 
-  const getInitials = (name) =>
-    name
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0].toUpperCase())
-      .join('')
+// --- Fake Data ---
+const fakeSessions = [
+  {
+    id: 1,
+    class: 'Math 101',
+    timing: '10:00 AM',
+    date: '2026-02-13',
+    host: 'Alice',
+    details: 'Algebra review',
+    connected: false,
+    isOwl: false,
+  },
+  {
+    id: 2,
+    class: 'Physics 201',
+    timing: '2:00 PM',
+    date: '2026-02-14',
+    host: 'Bob',
+    details: 'Quantum basics',
+    connected: true,
+    isOwl: false,
+  },
+  {
+    id: 3,
+    class: 'StudyOwl: Charlie',
+    timing: 'Flexible',
+    date: '2026-02-15',
+    host: 'Charlie',
+    details: 'General study buddy',
+    connected: false,
+    isOwl: true,
+  },
+  {
+    id: 4,
+    class: 'StudyOwl: Dana',
+    timing: 'Evenings',
+    date: '2026-02-16',
+    host: 'Dana',
+    details: 'Focus on chemistry',
+    connected: true,
+    isOwl: true,
+  },
+];
 
-  const loadCourses = () => {
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        setCourses(parsed)
-      }
-    } catch (error) {
-      console.warn('Failed to parse stored courses:', error)
-    }
-  }
+const fakeBuddies = [
+  { id: 'owl1', name: 'Charlie', connected: true },
+  { id: 'owl2', name: 'Dana', connected: true },
+];
 
-  useEffect(() => {
-    loadCourses()
-    const handleStorage = (event) => {
-      if (event.key === storageKey) {
-        loadCourses()
-      }
-    }
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  }, [])
+const initialChat = {
+  2: [
+    { sender: 'Bob', text: 'Welcome to the session!' },
+    { sender: 'You', text: 'Thanks, excited to join.' },
+  ],
+  4: [
+    { sender: 'Dana', text: 'Ready to study chemistry?' },
+  ],
+};
 
-  useEffect(() => {
-    fetchRequests()
-  }, [])
 
-  const fetchMatches = async () => {
-    setMatchError('')
-    setMatchesLoading(true)
+import TopBar from '../components/TopBar';
 
-    try {
-      const token = session?.access_token
-      if (!token) {
-        setMatchError('Sign in to view study buddy matches.')
-        setMatchesLoading(false)
-        return
-      }
 
-      const params = new URLSearchParams()
-      if (selectedCourse) params.set('course', selectedCourse)
-      if (user?.id) params.set('user_id', user.id)
-      params.set('limit', '25')
+const StudySession = ({ user, onLogout }) => {
+  const [mode, setMode] = useState('choose'); // choose | find | connected
+  const [filters, setFilters] = useState({ class: '', timing: '', date: '' });
+  const [showOwlsOnly, setShowOwlsOnly] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [chatMessages, setChatMessages] = useState(initialChat);
+  const [chatInput, setChatInput] = useState('');
 
-      const response = await fetch(`${apiBaseUrl}/sessions/available?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
+  // Filtered sessions
+  const availableSessions = fakeSessions.filter(s => {
+    if (s.connected) return false;
+    if (showOwlsOnly && !s.isOwl) return false;
+    if (filters.class && !s.class.toLowerCase().includes(filters.class.toLowerCase())) return false;
+    if (filters.timing && !s.timing.toLowerCase().includes(filters.timing.toLowerCase())) return false;
+    if (filters.date && s.date !== filters.date) return false;
+    return true;
+  });
 
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch matches.')
-      }
+  const connectedSessions = fakeSessions.filter(s => s.connected);
+  const connectedBuddies = fakeBuddies.filter(b => b.connected);
 
-      setMatches(data.matches || [])
-      setSelectedBuddy(null)
-    } catch (error) {
-      console.error('Match fetch failed:', error)
-      setMatchError(error.message || 'Unable to load matches.')
-    } finally {
-      setMatchesLoading(false)
-    }
-  }
+  // Handlers
+  const handleFilterChange = e => {
+    setFilters({ ...filters, [e.target.name]: e.target.value });
+  };
 
-  const fetchRequests = async () => {
-    setRequestError('')
-    try {
-      const token = session?.access_token
-      if (!token) return
+  const handleRequestInvite = id => {
+    alert('Invite requested for session/StudyOwl ID: ' + id);
+  };
 
-      const response = await fetch(`${apiBaseUrl}/sessions/requests`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to load requests.')
-      }
+  const handleSendMessage = () => {
+    if (!chatInput.trim() || !selectedSessionId) return;
+    setChatMessages(prev => ({
+      ...prev,
+      [selectedSessionId]: [
+        ...(prev[selectedSessionId] || []),
+        { sender: 'You', text: chatInput },
+      ],
+    }));
+    setChatInput('');
+  };
 
-      setRequests({
-        incoming: data.incoming || [],
-        outgoing: data.outgoing || [],
-        accepted: data.accepted || [],
-      })
-    } catch (error) {
-      console.error('Request fetch failed:', error)
-      setRequestError(error.message || 'Unable to load requests.')
-    }
-  }
-
-  const getBuddyStatus = (buddyId) => {
-    if (!buddyId) return { status: 'none' }
-
-    const accepted = requests.accepted.find(
-      (request) => request.requester_id === buddyId || request.recipient_id === buddyId,
-    )
-    if (accepted) {
-      return { status: 'accepted', request: accepted }
-    }
-
-    const outgoing = requests.outgoing.find((request) => request.recipient_id === buddyId)
-    if (outgoing) {
-      return { status: 'outgoing', request: outgoing }
-    }
-
-    const incoming = requests.incoming.find((request) => request.requester_id === buddyId)
-    if (incoming) {
-      return { status: 'incoming', request: incoming }
-    }
-
-    return { status: 'none' }
-  }
-
-  const handleSelectBuddy = (buddy) => {
-    setSelectedBuddy(buddy)
-  }
-
-  const handleSendRequest = async () => {
-    if (!selectedBuddy) return
-    setRequestError('')
-
-    try {
-      const token = session?.access_token
-      if (!token) return
-
-      const response = await fetch(`${apiBaseUrl}/sessions/request`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ to_user_id: selectedBuddy.user_id }),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Request failed.')
-      }
-
-      await fetchRequests()
-    } catch (error) {
-      console.error('Request send failed:', error)
-      setRequestError(error.message || 'Unable to send request.')
-    }
-  }
-
-  const handleRespond = async (decision) => {
-    if (!selectedBuddy) return
-    const status = getBuddyStatus(selectedBuddy.user_id)
-    if (!status.request?.id) return
-
-    setRequestError('')
-
-    try {
-      const token = session?.access_token
-      if (!token) return
-
-      const response = await fetch(`${apiBaseUrl}/sessions/respond`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ request_id: status.request.id, decision }),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Response failed.')
-      }
-
-      await fetchRequests()
-    } catch (error) {
-      console.error('Request respond failed:', error)
-      setRequestError(error.message || 'Unable to respond to request.')
-    }
-  }
-
+  // UI rendering
   return (
     <main className="page-shell">
-      <TopBar
-        user={user}
-        onLogout={onLogout}
-        availability={availability}
-        onToggleAvailability={() =>
-          setAvailability((prev) => (prev === 'available' ? 'away' : 'available'))
-        }
-        notificationsCount={2}
-      />
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Study Session</p>
-          <h1 className="page-title">Live study room</h1>
-          <p className="page-subtitle">
-            Join a session, catch up on notes, and keep your group on the same page.
-          </p>
-        </div>
-        <div className="header-actions">
-          <Link className="ghost-btn" to="/dashboard">
-            Back to dashboard
-          </Link>
-        </div>
-      </section>
-
-      <section className="session-layout">
-        <aside className="session-sidebar">
-          <div className="session-profile">
-            <div className="session-avatar">{getInitials(user?.name || user?.email || 'SO')}</div>
-            <div>
-              <p className="session-name">{user?.name || user?.email || 'UserName'}</p>
-              <Link className="session-link" to="/profile">
-                Update profile
-              </Link>
+      <TopBar user={user} onLogout={onLogout} availability="available" onToggleAvailability={() => {}} notificationsCount={0} />
+      <div className="ss-center-wrap">
+        {mode === 'choose' && (
+          <div className="ss-choose-container">
+            <div className="ss-card ss-choose-card">
+              <h2 className="rustic-title" style={{marginBottom: 24}}>Study Sessions</h2>
+              <button className="primary-btn" onClick={() => setMode('find')}>Find a Study Session</button>
+              <button className="primary-btn" style={{background: 'var(--accent-soft)', color: 'var(--accent-strong)'}} onClick={() => alert('Session creation not implemented.')}>Create My Own Session</button>
+              <button className="primary-btn" style={{background: 'var(--panel-strong)', color: 'var(--accent)'}} onClick={() => setMode('connected')}>View My Sessions & Study Buddies</button>
             </div>
           </div>
-
-          <div className="session-section">
-            <h3 className="session-section-title">Find Study Buddies</h3>
-            <div className="session-filters">
-              <label className="filter-group">
-                <span className="filter-label">Class</span>
-                <select
-                  className="field-input"
-                  value={selectedCourse}
-                  onChange={(event) => setSelectedCourse(event.target.value)}
-                >
-                  <option value="">All courses</option>
-                  {courses.map((course) => (
-                    <option key={course} value={course}>
-                      {course}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="filter-group">
-                <span className="filter-label">Time</span>
-                <select
-                  className="field-input"
-                  value={timeFilter}
-                  onChange={(event) => setTimeFilter(event.target.value)}
-                >
-                  <option value="today">Today</option>
-                  <option value="future">Future (calendar)</option>
-                </select>
-              </label>
-              {timeFilter === 'future' ? (
-                <label className="filter-group">
-                  <span className="filter-label">Select date</span>
-                  <input
-                    className="field-input"
-                    type="date"
-                    value={selectedDate}
-                    onChange={(event) => setSelectedDate(event.target.value)}
-                  />
-                </label>
-              ) : null}
-              <label className="filter-toggle">
+        )}
+        {mode === 'find' && (
+          <div className="ss-main-bg">
+            <div className="ss-header-row">
+              <button className="ghost-btn" onClick={() => setMode('choose')}>← Back</button>
+              <h2 className="rustic-title">Find an Existing Study Session</h2>
+            </div>
+            <div className="ss-filter-bar">
+              <input
+                className="ss-input"
+                name="class"
+                placeholder="Class (e.g. Math 101)"
+                value={filters.class}
+                onChange={handleFilterChange}
+              />
+              <input
+                className="ss-input"
+                name="timing"
+                placeholder="Timing (e.g. 10:00 AM)"
+                value={filters.timing}
+                onChange={handleFilterChange}
+              />
+              <input
+                className="ss-input"
+                name="date"
+                type="date"
+                value={filters.date}
+                onChange={handleFilterChange}
+              />
+              <label className="ss-checkbox-label">
                 <input
                   type="checkbox"
-                  checked={showBuddies}
-                  onChange={(event) => setShowBuddies(event.target.checked)}
-                />
-                <span>Show study buddies only</span>
+                  checked={showOwlsOnly}
+                  onChange={e => setShowOwlsOnly(e.target.checked)}
+                />{' '}
+                Show only StudyOwls
               </label>
-              <button className="primary-btn" type="button" onClick={fetchMatches}>
-                {matchesLoading ? 'Finding...' : 'Find other owls'}
-              </button>
-              {matchError ? <p className="form-error">{matchError}</p> : null}
+            </div>
+            <div className="ss-session-list">
+              {availableSessions.length === 0 && <div className="ss-empty">No sessions found.</div>}
+              {availableSessions.map(session => (
+                <div key={session.id} className="ss-card ss-session-card">
+                  <h4 className="ss-session-title">{session.class}</h4>
+                  <div className="ss-session-meta"><b>Host:</b> {session.host}</div>
+                  <div className="ss-session-meta"><b>Timing:</b> {session.timing}</div>
+                  <div className="ss-session-meta"><b>Date:</b> {session.date}</div>
+                  <div className="ss-session-meta"><b>Details:</b> {session.details}</div>
+                  <button className="primary-btn" style={{marginTop: 10}} onClick={() => handleRequestInvite(session.id)}>Request Invite</button>
+                </div>
+              ))}
             </div>
           </div>
-
-          <div className="session-section">
-            <h3 className="session-section-title">
-              {showBuddies ? 'Study buddies' : 'Current sessions'}
-            </h3>
-            <div className="session-list">
-              {showBuddies ? (
-                matchesLoading ? (
-                  <p className="session-empty">Loading matches...</p>
-                ) : matches.length ? (
-                  matches.map((match) => (
-                    <button
-                      key={match.user_id}
-                      className={`session-item${selectedBuddy?.user_id === match.user_id ? ' is-active' : ''}`}
-                      type="button"
-                      onClick={() => handleSelectBuddy(match)}
-                    >
-                      <span className="session-item-meta">
-                        <span className="session-item-avatar">
-                          {getInitials(match.name || 'Study Buddy')}
-                        </span>
-                        <span>
-                          <span className="session-item-title">{match.name || 'Study Buddy'}</span>
-                          <span className="session-item-preview">
-                            {match.courses?.length ? match.courses.join(', ') : 'Available now'}
-                          </span>
-                        </span>
-                      </span>
-                      <span className="session-item-pill">
-                        {getBuddyStatus(match.user_id).status === 'accepted'
-                          ? 'Accepted'
-                          : getBuddyStatus(match.user_id).status === 'incoming'
-                            ? 'Incoming'
-                            : getBuddyStatus(match.user_id).status === 'outgoing'
-                              ? 'Pending'
-                              : 'Match'}
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <p className="session-empty">No study buddies yet. Try a different class.</p>
-                )
-              ) : (
-                currentSessions.map((chat) => (
-                  <button
-                    key={chat.id}
-                    className={`session-item${chat.active ? ' is-active' : ''}`}
-                    type="button"
-                  >
-                    <span className="session-item-meta">
-                      <span className="session-item-avatar">{getInitials(chat.name)}</span>
-                      <span>
-                        <span className="session-item-title">{chat.name}</span>
-                        <span className="session-item-preview">{chat.preview}</span>
-                      </span>
+        )}
+        {mode === 'connected' && (
+          <div className="ss-main-bg ss-connected-layout">
+            <div className="ss-connected-sidebar">
+              <h3 className="ss-sidebar-title">My Study Sessions</h3>
+              {connectedSessions.length === 0 && <div className="ss-empty">No connected sessions.</div>}
+              {connectedSessions.map(s => (
+                <div
+                  key={s.id}
+                  className={`ss-sidebar-item${selectedSessionId === s.id ? ' ss-sidebar-item-active' : ''}`}
+                  onClick={() => setSelectedSessionId(s.id)}
+                >
+                  <b>{s.class}</b>
+                  <div className="ss-sidebar-meta">{s.timing} | {s.date}</div>
+                </div>
+              ))}
+              <h3 className="ss-sidebar-title" style={{ marginTop: 30 }}>My Study Buddies</h3>
+              {connectedBuddies.length === 0 && <div className="ss-empty">No study buddies.</div>}
+              {connectedBuddies.map(b => (
+                <div
+                  key={b.id}
+                  className={`ss-sidebar-item${selectedSessionId === b.id ? ' ss-sidebar-item-active' : ''}`}
+                  onClick={() => setSelectedSessionId(b.id)}
+                >
+                  <b>{b.name}</b>
+                </div>
+              ))}
+            </div>
+            <div className="ss-connected-main">
+              {!selectedSessionId && (
+                <div className="ss-empty ss-chat-empty">Select a session or buddy to start chatting.</div>
+              )}
+              {selectedSessionId && (
+                <div className="ss-chat-card">
+                  <div className="ss-chat-header">
+                    <button className="ghost-btn" onClick={() => alert('Session details popup (not implemented)')} style={{ marginRight: 12 }}>View Session Details</button>
+                    <span className="ss-chat-title">
+                      {(() => {
+                        const s = connectedSessions.find(x => x.id === selectedSessionId);
+                        if (s) return s.class + ' (' + s.timing + ')';
+                        const b = connectedBuddies.find(x => x.id === selectedSessionId);
+                        if (b) return b.name + ' (StudyOwl)';
+                        return '';
+                      })()}
                     </span>
-                    <span className="session-item-pill">Chat</span>
-                  </button>
-                ))
+                  </div>
+                  <div className="ss-chat-messages">
+                    {(chatMessages[selectedSessionId] || []).map((msg, idx) => (
+                      <div key={idx} className={`ss-chat-msg${msg.sender === 'You' ? ' ss-chat-msg-self' : ''}`}>
+                        <span className="ss-chat-bubble">
+                          <b>{msg.sender}:</b> {msg.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ss-chat-input-row">
+                    <input
+                      className="ss-input"
+                      type="text"
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSendMessage(); }}
+                      placeholder="Type a message..."
+                      disabled={!selectedSessionId}
+                    />
+                    <button className="primary-btn" onClick={handleSendMessage} disabled={!chatInput.trim() || !selectedSessionId}>Send</button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
-        </aside>
-
-        <section className="session-chat">
-          <header className="session-chat-header">
-            <div className="session-title-group">
-              <div className="session-avatar is-large">{getInitials(sessionTitle)}</div>
-              <div>
-                <h2 className="session-title">{sessionTitle}</h2>
-                <p className="session-members">
-                  {selectedBuddy
-                    ? getBuddyStatus(selectedBuddy.user_id).status === 'accepted'
-                      ? `Matched with ${selectedBuddy.name || 'Study Buddy'}`
-                      : getBuddyStatus(selectedBuddy.user_id).status === 'incoming'
-                        ? 'Incoming request pending your response'
-                        : getBuddyStatus(selectedBuddy.user_id).status === 'outgoing'
-                          ? 'Request sent, waiting on response'
-                          : 'Send a request to connect'
-                    : 'Select a buddy or session to continue'}
-                </p>
-              </div>
-            </div>
-            <div className="session-actions">
-              {selectedBuddy ? (
-                getBuddyStatus(selectedBuddy.user_id).status === 'accepted' ? (
-                  <button className="primary-btn" type="button">
-                    Start focus
-                  </button>
-                ) : getBuddyStatus(selectedBuddy.user_id).status === 'incoming' ? (
-                  <>
-                    <button className="ghost-btn" type="button" onClick={() => handleRespond('declined')}>
-                      Decline
-                    </button>
-                    <button className="primary-btn" type="button" onClick={() => handleRespond('accepted')}>
-                      Accept
-                    </button>
-                  </>
-                ) : (
-                  <button className="ghost-btn" type="button" onClick={handleSendRequest}>
-                    {getBuddyStatus(selectedBuddy.user_id).status === 'outgoing'
-                      ? 'Request sent'
-                      : 'Send request'}
-                  </button>
-                )
-              ) : (
-                <button className="ghost-btn" type="button" disabled>
-                  Select a buddy
-                </button>
-              )}
-            </div>
-          </header>
-          {requestError ? <p className="form-error">{requestError}</p> : null}
-          {selectedBuddy && getBuddyStatus(selectedBuddy.user_id).status === 'accepted' ? (
-            <div className="panel-card session-chat-panel">
-              <div className="panel-header">
-                <h3>Session chat</h3>
-                <span className="panel-pill">Accepted</span>
-              </div>
-              <p className="session-empty">Session chat is ready. Real-time chat coming next.</p>
-              <div className="session-input-row">
-                <input
-                  className="field-input"
-                  type="text"
-                  placeholder="Messaging will be enabled after realtime is wired up."
-                  disabled
-                />
-                <button className="primary-btn" type="button" disabled>
-                  Send
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="panel-card session-locked">
-              <h3>Chat locked</h3>
-              <p>
-                Choose a study buddy or session and get accepted before the chat unlocks.
-              </p>
-            </div>
-          )}
-        </section>
-      </section>
+        )}
+        {mode !== 'choose' && mode !== 'find' && mode !== 'connected' && (
+          <div className="ss-main-bg"><div className="ss-empty">Loading...</div></div>
+        )}
+      </div>
     </main>
-  )
-}
+  );
+};
 
-StudySession.propTypes = {
-  onLogout: PropTypes.func.isRequired,
-  session: PropTypes.shape({
-    access_token: PropTypes.string,
-  }),
-  user: PropTypes.shape({
-    email: PropTypes.string,
-  }),
-}
-
-export default StudySession
+export default StudySession;

@@ -4,35 +4,19 @@ import { Link } from 'react-router-dom'
 function AuthLayout({ title, subtitle, children, footerLink }) {
   return (
     <div className="auth-page">
-      <div className="auth-card">
-        <aside className="auth-hero">
-          <div className="brand-badge">StudyOwl</div>
-          <h1 className="hero-title">Stay organized, learn faster.</h1>
-          <p className="hero-copy">
-            Keep your study flow in one place. Build streaks, track progress, and
-            stay motivated with a clean, simple dashboard.
-          </p>
-          <ul className="hero-points">
-            <li>Personalized daily goals</li>
-            <li>Focus-friendly task view</li>
-            <li>Export notes and share updates</li>
-          </ul>
-          <div className="hero-footer">
-            <span className="pill">Fast setup</span>
-            <span className="pill">No distractions</span>
-            <span className="pill">Secure by default</span>
-          </div>
-        </aside>
-
+      <div className="auth-card rustic-login">
         <section className="auth-panel">
+          <div className="owl-icon" aria-label="Owl">
+            <img src="https://cdn.pixabay.com/photo/2022/10/11/22/46/owl-7515291_1280.png" alt="Owl" style={{width: '64px', height: '64px', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 2px 8px rgba(139,92,43,0.12)'}} />
+          </div>
           <header className="auth-header">
-            <p className="eyebrow">Access</p>
-            <h2 className="auth-title">{title}</h2>
-            <p className="auth-subtitle">{subtitle}</p>
+            <h2 className="auth-title rustic-title">{title}</h2>
+            <p className="auth-subtitle rustic-subtitle">{subtitle}</p>
           </header>
-
-          <div className="auth-content">{children}</div>
-
+          {/* Only the form (children) is wrapped in auth-content, not the whole panel */}
+          <div className="auth-content">
+            {children}
+          </div>
           <footer className="auth-footer">
             {footerLink?.label && footerLink?.to ? (
               <>
@@ -42,6 +26,11 @@ function AuthLayout({ title, subtitle, children, footerLink }) {
             ) : null}
           </footer>
         </section>
+        <aside className="auth-side-panel">
+          <div className="side-title">Study Owl</div>
+          <div className="side-subtitle">Find studious owls as motivated as you!</div>
+          <img className="side-owl-img" src="https://images.vexels.com/media/users/3/229175/isolated/preview/9acf43fe149889a0afd3dcbb1598057b-flying-barn-owl-hand-drawn.png" alt="Flying Owl" />
+        </aside>
       </div>
     </div>
   )

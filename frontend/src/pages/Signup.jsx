@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import InputField from '../components/InputField'
 import { supabase } from '../auth/supabaseClient'
@@ -10,8 +11,10 @@ function Signup() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
   const handleSubmit = async (event) => {
+    console.log('Signup form submitted');
     event.preventDefault()
     if (!name.trim() || !email.trim() || !password.trim()) {
       setError('Please fill in all fields to create your account.')
@@ -38,9 +41,14 @@ function Signup() {
 
     if (signUpError) {
       setError(signUpError.message || 'Could not create your account. Try again.')
+      setLoading(false)
+      return
     }
 
+    // If signup is successful, redirect to login and show a message
     setLoading(false)
+    alert('Account created! Please check your email to confirm your account, then log in.')
+    navigate('/login')
   }
 
   return (

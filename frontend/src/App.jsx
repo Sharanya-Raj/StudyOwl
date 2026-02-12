@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import Home from './pages/Home'
+import AdminDashboard from './pages/AdminDashboard'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Profile from './pages/Profile'
@@ -88,7 +89,7 @@ function App() {
                 <div className="card">Loading session...</div>
               </div>
             ) : (
-              <Landing />
+              <Navigate to="/login" replace />
             )
           }
         />
@@ -195,6 +196,10 @@ function App() {
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route
+          path="/admin-dashboard"
+          element={<AdminDashboard />}
+        />
       </Routes>
     </div>
   )

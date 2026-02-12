@@ -1,3 +1,52 @@
+/* FIXED: Removed stray colons and invalid property blocks */
+.auth-side-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: #fff;
+  padding: 48px 24px;
+  border-left: 1px solid #f4e8d9;
+  font-weight: 800;
+  margin-bottom: 4px;
+  letter-spacing: 1px;
+}
+.rustic-title {
+  font-family: 'Source Serif 4', 'Times New Roman', serif;
+  color: #8B5C2B;
+    background: var(--panel-strong);
+    border: 1px solid var(--panel-strong);
+    box-shadow: 0 2px 8px rgba(192, 138, 62, 0.04);
+}
+
+.rustic-subtitle {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: none;
+}
+
+.auth-form {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+  box-shadow: 0 2px 12px rgba(192, 138, 62, 0.08);
+  padding: 24px;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #8B5C2B, #d4a373);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 12px 0;
+  margin-top: 12px;
+  box-shadow: 0 2px 8px rgba(139, 92, 43, 0.08);
+  transition: background 0.2s;
+}
+.primary-btn:hover {
+  background: linear-gradient(135deg, #d4a373, #8B5C2B);
+}
 .app-shell {
   min-height: 100vh;
   position: relative;
@@ -52,8 +101,7 @@
   border-radius: 24px;
   overflow: hidden;
   border: 1px solid rgba(153, 119, 86, 0.2);
-  background: radial-gradient(circle at 15% 20%, rgba(212, 163, 115, 0.25), transparent 35%),
-    linear-gradient(160deg, #f7ede1, #f2e3d3 60%, #efe0d1);
+  background: #fff;
 }
 
 .auth-hero {
@@ -64,7 +112,7 @@
   font-family: 'Source Serif 4', 'Times New Roman', serif;
   font-weight: 700;
   font-size: 20px;
-  color: #3a2d23;
+  color: #8B5C2B;
   border-right: 1px solid rgba(153, 119, 86, 0.2);
 }
 
@@ -73,7 +121,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #fff7ec;
+  background: #fff;
   border: 1px solid rgba(192, 138, 62, 0.4);
   border-radius: 999px;
   font-weight: 600;
@@ -302,7 +350,7 @@
 
 .home-subtitle {
   margin: 0;
-  color: var(--text-muted);
+  color: #8B5C2B;
 }
 
 .home-actions {
@@ -318,7 +366,7 @@
 
 .card {
   background: var(--panel);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--panel-strong);
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 16px 30px rgba(107, 79, 57, 0.12);
@@ -424,10 +472,14 @@
 
 .panel-card {
   background: var(--panel);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--panel-strong);
   border-radius: 16px;
-  padding: 16px;
+  padding: 28px 20px;
+  min-height: 220px;
   box-shadow: 0 14px 30px rgba(92, 71, 54, 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .panel-card h3 {
@@ -437,7 +489,7 @@
 
 .panel-card p {
   margin: 0;
-  color: var(--text-muted);
+  color: #8B5C2B;
 }
 
 .panel-list {
@@ -510,7 +562,7 @@
 }
 
 .chat-message.assistant .chat-bubble {
-  background: #111c2f;
+  background: #f4e8d9;
   color: var(--text);
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
@@ -888,8 +940,8 @@
   align-items: center;
   padding: 14px 18px;
   border-radius: 16px;
-  background: rgba(11, 18, 34, 0.7);
-  border: 1px solid rgba(59, 200, 201, 0.18);
+  background: linear-gradient(90deg, #f4e8d9 60%, #dfd3b7 100%);
+  border: 1px solid var(--stroke);
   backdrop-filter: blur(12px);
 }
 
