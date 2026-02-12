@@ -78,6 +78,9 @@ const StudySession = ({ user, onLogout }) => {
   const [selectedId, setSelectedId] = useState(null);
   const [chatMessages, setChatMessages] = useState({ ...initialChat });
   const [userSessions, setUserSessions] = useState([]); // for created sessions
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [membersModalSessionId, setMembersModalSessionId] = useState(null);
+  const [membersState, setMembersState] = useState({}); // { [sessionId]: {members: [], requests: []} }
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState({ class: '', date: '', time: '', details: '' });
 
@@ -138,8 +141,9 @@ const StudySession = ({ user, onLogout }) => {
   const handleCreateSession = e => {
     e.preventDefault();
     // Add a new fake session for the user
+    const newId = 'user-' + Date.now();
     const newSession = {
-      id: 'user-' + Date.now(),
+      id: newId,
       class: createForm.class,
       title: createForm.class,
       timing: createForm.time,
@@ -153,6 +157,19 @@ const StudySession = ({ user, onLogout }) => {
       isOwl: false,
     };
     setUserSessions(prev => [...prev, newSession]);
+    // Add default members/requests for demo
+    setMembersState(prev => ({
+      ...prev,
+      [newId]: {
+        members: [
+          { id: 'm1', name: 'Alice', active: true },
+          { id: 'm2', name: 'Bob', active: true },
+        ],
+        requests: [
+          { id: 'r1', name: 'Charlie', accepted: false },
+        ],
+      },
+    }));
     closeCreateModal();
   };
 
@@ -160,6 +177,13 @@ const StudySession = ({ user, onLogout }) => {
   const selectedSession = connectedSessions.find(s => s.id === selectedId);
   const selectedBuddy = connectedBuddies.find(b => b.id === selectedId);
   const chat = chatMessages[selectedId] || [];
+
+  // Members modal logic
+  const openMembersModal = (sessionId) => setMembersModalSessionId(sessionId);
+  const closeMembersModal = () => setMembersModalSessionId(null);
+  const handleMembersChange = (sessionId, newState) => {
+    setMembersState(prev => ({ ...prev, [sessionId]: newState }));
+  };
 
   return (
     <main className="page-shell">
@@ -261,8 +285,18 @@ const StudySession = ({ user, onLogout }) => {
                     sessionOrBuddy={selectedSession || selectedBuddy}
                     chat={chat}
                     onSendMessage={handleSendMessage}
-                    onViewDetails={handleViewDetails}
+                    showMembersButton={selectedSession?.isUserSession}
+                    onViewMembers={() => openMembersModal(selectedSession.id)}
                   />
+                  {/* Members Modal for user-created sessions */}
+                  {membersModalSessionId && (
+                    <MembersModal
+                      sessionId={membersModalSessionId}
+                      membersState={membersState[membersModalSessionId]}
+                      onClose={closeMembersModal}
+                      onSave={handleMembersChange}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="ss-empty ss-chat-empty" style={{ background: '#fff', borderRadius: 16, boxShadow: '0 8px 18px rgba(107, 79, 57, 0.08)', padding: 18, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Select a session or buddy to start chatting.</div>
@@ -274,5 +308,94 @@ const StudySession = ({ user, onLogout }) => {
     </main>
   );
 };
+
+// --- MembersModal component ---
+function MembersModal({ sessionId, membersState, onClose, onSave }) {
+  const [tab, setTab] = React.useState('members');
+  const [members, setMembers] = React.useState(membersState?.members || []);
+  const [requests, setRequests] = React.useState(membersState?.requests || []);
+
+  // Track toggled-off members and accepted requests
+  const [removed, setRemoved] = React.useState([]); // ids
+  const [accepted, setAccepted] = React.useState([]); // ids
+
+  const handleToggleMember = (id) => {
+    setRemoved(rm => rm.includes(id) ? rm.filter(x => x !== id) : [...rm, id]);
+  };
+  const handleAcceptRequest = (id) => {
+    setAccepted(acc => acc.includes(id) ? acc : [...acc, id]);
+  };
+  const handleSave = () => {
+    // Remove toggled-off members, add accepted requests
+    const newMembers = [
+      ...members.filter(m => !removed.includes(m.id)),
+      ...requests.filter(r => accepted.includes(r.id)).map(r => ({ id: r.id, name: r.name, active: true })),
+    ];
+    const newRequests = [
+      ...requests.filter(r => !accepted.includes(r.id)),
+      ...members.filter(m => removed.includes(m.id)).map(m => ({ id: m.id, name: m.name, accepted: false })),
+    ];
+    onSave(sessionId, { members: newMembers, requests: newRequests });
+    onClose();
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(60,40,20,0.18)', zIndex: 2000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: 'var(--panel)', borderRadius: 20, boxShadow: '0 16px 40px rgba(107, 79, 57, 0.18)',
+        padding: 28, minWidth: 340, maxWidth: 400, border: '1px solid var(--panel-strong)',
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <button className={tab === 'members' ? 'primary-btn' : 'ghost-btn'} style={{ flex: 1 }} onClick={() => setTab('members')}>Members</button>
+          <button className={tab === 'requests' ? 'primary-btn' : 'ghost-btn'} style={{ flex: 1 }} onClick={() => setTab('requests')}>Requests</button>
+        </div>
+        {tab === 'members' && (
+          <div style={{ minHeight: 120 }}>
+            {members.length === 0 && <div style={{ color: '#aaa', textAlign: 'center' }}>No members</div>}
+            {members.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span>{m.name}</span>
+                <button
+                  className="ghost-btn"
+                  style={{ background: removed.includes(m.id) ? '#eee' : '#c08a3e', color: removed.includes(m.id) ? '#888' : '#fff', borderRadius: 12, minWidth: 60 }}
+                  onClick={() => handleToggleMember(m.id)}
+                >
+                  {removed.includes(m.id) ? 'Removed' : 'Keep'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {tab === 'requests' && (
+          <div style={{ minHeight: 120 }}>
+            {requests.length === 0 && <div style={{ color: '#aaa', textAlign: 'center' }}>No requests</div>}
+            {requests.map(r => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span>{r.name}</span>
+                <button
+                  className={accepted.includes(r.id) ? 'primary-btn' : 'ghost-btn'}
+                  style={{ borderRadius: 12, minWidth: 80 }}
+                  onClick={() => handleAcceptRequest(r.id)}
+                  disabled={accepted.includes(r.id)}
+                >
+                  {accepted.includes(r.id) ? 'Accepted' : 'Accept'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+          <button className="primary-btn" style={{ flex: 1 }} onClick={handleSave}>Save</button>
+          <button className="ghost-btn" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default StudySession;

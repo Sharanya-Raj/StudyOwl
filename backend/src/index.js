@@ -231,42 +231,52 @@ function requireAuth(req, res, next) {
   })
 }
 
-async function createGroqEmbeddings(inputs) {
-  if (!inputs || inputs.length === 0) return []
 
-  const response = await fetch('https://api.groq.com/openai/v1/embeddings', {
+async function createAzureOpenAIEmbeddings(inputs) {
+  if (!inputs || inputs.length === 0) return [];
+
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deployment = process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT;
+  const apiVersion = process.env.AZURE_OPENAI_EMBEDDING_API_VERSION || '2024-02-15-preview';
+
+  if (!endpoint || !apiKey || !deployment) {
+    throw new Error('Missing Azure OpenAI embedding configuration in .env');
+  }
+
+  const url = `${endpoint.replace(/\/$/, '')}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      'api-key': apiKey,
     },
     body: JSON.stringify({
-      model: GROQ_EMBED_MODEL,
       input: inputs,
     }),
-  })
+  });
 
   if (!response.ok) {
-    const detail = await response.text()
-    throw new Error(`Groq embeddings failed: ${response.status} ${detail}`)
+    const detail = await response.text();
+    throw new Error(`Azure OpenAI embeddings failed: ${response.status} ${detail}`);
   }
 
-  const data = await response.json()
-  return (data.data || []).map((item) => item.embedding)
+  const data = await response.json();
+  return (data.data || []).map((item) => item.embedding);
 }
 
 async function storeDocumentEmbeddings({ chunks, userId, documentId }) {
-  if (!embeddingsEnabled || !supabaseAdmin) return
+  if (!embeddingsEnabled || !supabaseAdmin) return;
   if (!userId) {
-    console.warn('Skipping embeddings: missing user id')
-    return
+    console.warn('Skipping embeddings: missing user id');
+    return;
   }
-  if (!chunks || chunks.length === 0) return
+  if (!chunks || chunks.length === 0) return;
 
   for (let i = 0; i < chunks.length; i += embeddingBatchSize) {
-    const batch = chunks.slice(i, i + embeddingBatchSize)
-    const texts = batch.map((chunk) => chunk.content || '')
-    const embeddings = await createGroqEmbeddings(texts)
+    const batch = chunks.slice(i, i + embeddingBatchSize);
+    const texts = batch.map((chunk) => chunk.content || '');
+    const embeddings = await createAzureOpenAIEmbeddings(texts);
 
     const rows = batch.map((chunk, index) => ({
       id: chunk.id,
@@ -275,27 +285,27 @@ async function storeDocumentEmbeddings({ chunks, userId, documentId }) {
       chunk_text: chunk.content || '',
       embedding: embeddings[index],
       created_at: new Date().toISOString(),
-    }))
+    }));
 
-    const { error } = await supabaseAdmin.from('document_embeddings').insert(rows)
+    const { error } = await supabaseAdmin.from('document_embeddings').insert(rows);
     if (error) {
-      throw new Error(`Supabase insert failed: ${error.message}`)
+      throw new Error(`Supabase insert failed: ${error.message}`);
     }
   }
 }
 
 async function storeSingleEmbedding({ table, payload, text }) {
-  if (!embeddingsEnabled || !supabaseAdmin) return
-  const [embedding] = await createGroqEmbeddings([text])
+  if (!embeddingsEnabled || !supabaseAdmin) return;
+  const [embedding] = await createAzureOpenAIEmbeddings([text]);
 
   const { error } = await supabaseAdmin.from(table).insert({
     ...payload,
     embedding,
     created_at: new Date().toISOString(),
-  })
+  });
 
   if (error) {
-    throw new Error(`Supabase insert failed: ${error.message}`)
+    throw new Error(`Supabase insert failed: ${error.message}`);
   }
 }
 
