@@ -76,27 +76,8 @@ function Workspace({ user, session, onLogout, documentId, studyDoc, onUploadDoc,
               <p>Upload a document to preview it here.</p>
             </div>
           )}
-          <div className="panel-card">
-            <div className="panel-header">
-              <h3>Extracted notes</h3>
-              <span className="panel-pill">Coming soon</span>
-            </div>
-            <p>Summary highlights and section notes will appear here after processing.</p>
-          </div>
-          <div className="panel-card">
-            <div className="panel-header">
-              <h3>Flashcards</h3>
-              <span className="panel-pill">Coming soon</span>
-            </div>
-            <p>Generate flashcards from key definitions and formulas.</p>
-          </div>
-          <div className="panel-card">
-            <div className="panel-header">
-              <h3>Concept graph</h3>
-              <span className="panel-pill">Coming soon</span>
-            </div>
-            <p>Map relationships between concepts once vector embeddings are ready.</p>
-          </div>
+          {/* Removed Extracted notes panel */}
+          {/* Removed Flashcards and Concept graph panels */}
         </div>
       </section>
     </main>

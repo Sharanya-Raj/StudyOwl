@@ -438,8 +438,8 @@
   background: #fffaf3;
   border: 1px solid var(--stroke);
   border-radius: 16px;
-  padding: 10px;
-  height: 75vh;
+  padding: 8px;
+  height: 40vh;
   overflow: hidden;
 }
 
@@ -474,12 +474,12 @@
   background: var(--panel);
   border: 1px solid var(--panel-strong);
   border-radius: 16px;
-  padding: 28px 20px;
-  min-height: 220px;
+  padding: 16px 12px;
+  min-height: 100px;
   box-shadow: 0 14px 30px rgba(92, 71, 54, 0.12);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .panel-card h3 {
@@ -584,7 +584,7 @@
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--stroke);
-  background: #0b1222;
+  background: #fff;
   color: var(--text);
   font-size: 14px;
 }
@@ -1252,12 +1252,14 @@
 }
 
 .workspace-right {
-  display: grid;
-  grid-template-rows: minmax(520px, 1fr) auto;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100%;
 }
 
 .workspace-preview {
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
 }
