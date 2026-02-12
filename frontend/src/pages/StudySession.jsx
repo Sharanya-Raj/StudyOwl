@@ -137,33 +137,39 @@ const StudySession = ({ user, onLogout }) => {
           viewMode={viewMode}
         />
         {viewMode === 'find' && (
-          <AvailableSessionsList
-            sessions={filteredSessions}
-            studyBuddies={studyBuddies}
-            showOnlyBuddies={showOnlyBuddies}
-            onToggleBuddies={() => setShowOnlyBuddies(b => !b)}
-            onRequestInvite={handleRequestInvite}
-          />
+          <div style={{ background: 'var(--panel)', borderRadius: 16, boxShadow: '0 16px 30px rgba(107, 79, 57, 0.12)', padding: 24, marginTop: 12 }}>
+            <AvailableSessionsList
+              sessions={filteredSessions}
+              studyBuddies={studyBuddies}
+              showOnlyBuddies={showOnlyBuddies}
+              onToggleBuddies={() => setShowOnlyBuddies(b => !b)}
+              onRequestInvite={handleRequestInvite}
+            />
+          </div>
         )}
         {viewMode === 'connected' && (
-          <div style={{ display: 'flex', gap: 24, minHeight: 350 }}>
-            <ConnectedList
-              connectedSessions={connectedSessions}
-              connectedBuddies={connectedBuddies}
-              onSelectSession={s => setSelectedId(s.id)}
-              onSelectBuddy={b => setSelectedId(b.id)}
-              selectedId={selectedId}
-            />
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: 24, minHeight: 350, background: 'var(--panel)', borderRadius: 16, boxShadow: '0 16px 30px rgba(107, 79, 57, 0.12)', padding: 24, marginTop: 12 }}>
+            <div style={{ minWidth: 260 }}>
+              <ConnectedList
+                connectedSessions={connectedSessions}
+                connectedBuddies={connectedBuddies}
+                onSelectSession={s => setSelectedId(s.id)}
+                onSelectBuddy={b => setSelectedId(b.id)}
+                selectedId={selectedId}
+              />
+            </div>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'stretch' }}>
               {selectedId ? (
-                <SessionChat
-                  sessionOrBuddy={selectedSession || selectedBuddy}
-                  chat={chat}
-                  onSendMessage={handleSendMessage}
-                  onViewDetails={handleViewDetails}
-                />
+                <div style={{ width: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 8px 18px rgba(107, 79, 57, 0.08)', padding: 18, display: 'flex', flexDirection: 'column' }}>
+                  <SessionChat
+                    sessionOrBuddy={selectedSession || selectedBuddy}
+                    chat={chat}
+                    onSendMessage={handleSendMessage}
+                    onViewDetails={handleViewDetails}
+                  />
+                </div>
               ) : (
-                <div className="ss-empty ss-chat-empty">Select a session or buddy to start chatting.</div>
+                <div className="ss-empty ss-chat-empty" style={{ background: '#fff', borderRadius: 16, boxShadow: '0 8px 18px rgba(107, 79, 57, 0.08)', padding: 18, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Select a session or buddy to start chatting.</div>
               )}
             </div>
           </div>
