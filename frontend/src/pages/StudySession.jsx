@@ -77,16 +77,22 @@ const StudySession = ({ user, onLogout }) => {
   const [showOnlyBuddies, setShowOnlyBuddies] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [chatMessages, setChatMessages] = useState({ ...initialChat });
+  const [userSessions, setUserSessions] = useState([]); // for created sessions
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ class: '', date: '', time: '', details: '' });
 
   // Fake data mapping for new component props
-  const sessions = fakeSessions.map(s => ({
-    ...s,
-    title: s.class,
-    time: s.timing,
-    location: s.details,
-  }));
+  const sessions = [
+    ...fakeSessions.map(s => ({
+      ...s,
+      title: s.class,
+      time: s.timing,
+      location: s.details,
+    })),
+    ...userSessions
+  ];
   const studyBuddies = fakeBuddies.map(b => ({ ...b, class: 'StudyOwl', title: b.name }));
-  const connectedSessions = sessions.filter(s => s.connected);
+  const connectedSessions = sessions.filter(s => s.connected || s.isUserSession);
   const connectedBuddies = studyBuddies.filter(b => b.connected);
 
   // Filtered sessions for AvailableSessionsList
@@ -119,6 +125,37 @@ const StudySession = ({ user, onLogout }) => {
     alert('Session details popup (not implemented)');
   };
 
+  // Modal handlers
+  const openCreateModal = () => setShowCreateModal(true);
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setCreateForm({ class: '', date: '', time: '', details: '' });
+  };
+  const handleCreateInput = e => {
+    const { name, value } = e.target;
+    setCreateForm(f => ({ ...f, [name]: value }));
+  };
+  const handleCreateSession = e => {
+    e.preventDefault();
+    // Add a new fake session for the user
+    const newSession = {
+      id: 'user-' + Date.now(),
+      class: createForm.class,
+      title: createForm.class,
+      timing: createForm.time,
+      time: createForm.time,
+      date: createForm.date,
+      host: user?.name || 'You',
+      details: createForm.details,
+      location: createForm.details,
+      connected: true,
+      isUserSession: true,
+      isOwl: false,
+    };
+    setUserSessions(prev => [...prev, newSession]);
+    closeCreateModal();
+  };
+
   // Find selected session or buddy
   const selectedSession = connectedSessions.find(s => s.id === selectedId);
   const selectedBuddy = connectedBuddies.find(b => b.id === selectedId);
@@ -131,11 +168,70 @@ const StudySession = ({ user, onLogout }) => {
         <SessionFilterBar
           filter={filter}
           setFilter={setFilter}
-          onCreateSession={() => alert('Session creation not implemented.')}
+          onCreateSession={openCreateModal}
           onViewConnected={() => setViewMode('connected')}
           onFindSessions={() => setViewMode('find')}
           viewMode={viewMode}
         />
+        {showCreateModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(60,40,20,0.18)',
+            zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <form onSubmit={handleCreateSession} style={{
+              background: 'var(--panel)',
+              borderRadius: 20,
+              boxShadow: '0 16px 40px rgba(107, 79, 57, 0.18)',
+              padding: 32,
+              minWidth: 340,
+              maxWidth: 400,
+              display: 'flex', flexDirection: 'column', gap: 18,
+              border: '1px solid var(--panel-strong)',
+            }}>
+              <h2 className="rustic-title" style={{margin: 0, marginBottom: 10, fontSize: 24}}>Create Study Session</h2>
+              <input
+                className="field-input"
+                name="class"
+                placeholder="Class (e.g. Math 101)"
+                value={createForm.class}
+                onChange={handleCreateInput}
+                required
+              />
+              <input
+                className="field-input"
+                name="date"
+                type="date"
+                value={createForm.date}
+                onChange={handleCreateInput}
+                required
+              />
+              <input
+                className="field-input"
+                name="time"
+                type="time"
+                value={createForm.time}
+                onChange={handleCreateInput}
+                required
+              />
+              <textarea
+                className="field-input"
+                name="details"
+                placeholder="Session details (optional)"
+                value={createForm.details}
+                onChange={handleCreateInput}
+                rows={3}
+                style={{resize: 'vertical'}}
+              />
+              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                <button type="submit" className="primary-btn" style={{ flex: 1 }}>Create</button>
+                <button type="button" className="ghost-btn" style={{ flex: 1 }} onClick={closeCreateModal}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        )}
         {viewMode === 'find' && (
           <div style={{ background: 'var(--panel)', borderRadius: 16, boxShadow: '0 16px 30px rgba(107, 79, 57, 0.12)', padding: 24, marginTop: 12 }}>
             <AvailableSessionsList
